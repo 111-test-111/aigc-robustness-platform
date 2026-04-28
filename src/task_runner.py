@@ -20,6 +20,7 @@ from src.attack_engine.base import Attack, AttackResult
 from src.attack_engine.diffusion_attack import DiffusionAttack
 from src.attack_engine.fgsm import FGSMAttack
 from src.attack_engine.pgd import PGDAttack
+from src.attack_engine.text_jailbreak import JailbreakAttack, TextAttack
 from src.defense_engine.base import Defense, DefenseResult
 from src.defense_engine.bit_depth import BitDepthDefense
 from src.defense_engine.blur import GaussianBlurDefense
@@ -45,6 +46,7 @@ ATTACK_REGISTRY: dict[str, type[Attack]] = {
     "pgd": PGDAttack,
     "advgan": AdvGANAttack,
     "diffusion": DiffusionAttack,
+    "jailbreak": JailbreakAttack,  # type: ignore[dict-item]
 }
 
 DEFENSE_REGISTRY: dict[str, type[Defense]] = {
@@ -179,6 +181,11 @@ def run_experiment(config_path: Path) -> Path:
     all_metrics: dict[str, float] = {}
 
     for attack, attack_cfg in attack_methods:
+        # Text attacks operate on different inputs; skip in image pipeline
+        if isinstance(attack, TextAttack):
+            logger.info("Skipping text attack %s in image pipeline", attack.name)
+            continue
+
         logger.info("Running attack: %s", attack.name)
         result: AttackResult = attack.generate(clean, labels, model, attack_cfg)
 
