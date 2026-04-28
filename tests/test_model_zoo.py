@@ -40,3 +40,39 @@ def test_load_classifier_device():
     model = load_classifier("resnet50", weights="none", device=device)
     param = next(model.parameters())
     assert param.device == device
+
+
+def test_load_vit_b_16_output_shape():
+    """Verify ViT-B/16 produces correct logits shape for a (1, 3, 224, 224) input."""
+    model = load_classifier("vit_b_16", weights="none")
+    x = torch.randn(1, 3, 224, 224)
+    with torch.no_grad():
+        output = model(x)
+    assert output.shape == (1, 1000)
+
+
+def test_load_densenet121_output_shape():
+    """Verify DenseNet-121 produces correct logits shape for a (1, 3, 224, 224) input."""
+    model = load_classifier("densenet121", weights="none")
+    x = torch.randn(1, 3, 224, 224)
+    with torch.no_grad():
+        output = model(x)
+    assert output.shape == (1, 1000)
+
+
+def test_load_vit_b_16_eval_mode():
+    """Verify ViT-B/16 is in eval mode after loading."""
+    model = load_classifier("vit_b_16", weights="none")
+    assert not model.training
+
+
+def test_load_densenet121_eval_mode():
+    """Verify DenseNet-121 is in eval mode after loading."""
+    model = load_classifier("densenet121", weights="none")
+    assert not model.training
+
+
+def test_invalid_model_name_raises():
+    """Verify ValueError is raised for an unregistered model name."""
+    with pytest.raises(ValueError, match="Unknown classifier: nonexistent"):
+        load_classifier("nonexistent")

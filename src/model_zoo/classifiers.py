@@ -19,6 +19,30 @@ def load_resnet50(
     return model.eval().to(device)
 
 
+@register("vit_b_16")
+def load_vit_b_16(
+    weights: str = "imagenet",
+    device: torch.device = torch.device("cpu"),
+) -> nn.Module:
+    if weights == "imagenet":
+        model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_V1)
+    else:
+        model = models.vit_b_16(weights=None)
+    return model.eval().to(device)
+
+
+@register("densenet121")
+def load_densenet121(
+    weights: str = "imagenet",
+    device: torch.device = torch.device("cpu"),
+) -> nn.Module:
+    if weights == "imagenet":
+        model = models.densenet121(weights=models.DenseNet121_Weights.IMAGENET1K_V1)
+    else:
+        model = models.densenet121(weights=None)
+    return model.eval().to(device)
+
+
 def load_classifier(
     name: str,
     weights: str = "imagenet",
