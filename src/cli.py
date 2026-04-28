@@ -103,6 +103,20 @@ def _generate_comparison(output_dirs: list[Path]) -> None:
 
 
 @app.command()
+def ui(
+    model: str = "resnet50",
+    device: str = "cpu",
+    port: int = 7860,
+    share: bool = False,
+) -> None:
+    """Launch the Gradio web interface."""
+    from src.web_ui import create_app
+
+    application = create_app(model, device)
+    application.launch(server_port=port, share=share)
+
+
+@app.command()
 def hello() -> None:
     """测试命令"""
     typer.echo("AIGC Robustness Platform")
