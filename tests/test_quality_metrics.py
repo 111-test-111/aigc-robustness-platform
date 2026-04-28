@@ -56,3 +56,68 @@ class TestComputeLpips:
         sig = inspect.signature(compute_lpips)
         assert "clean" in sig.parameters
         assert "adversarial" in sig.parameters
+
+
+# ---------------------------------------------------------------------------
+# FID
+# ---------------------------------------------------------------------------
+
+try:
+    from src.evaluation.quality_metrics import compute_fid
+
+    _fid_available = True
+except ImportError:
+    _fid_available = False
+
+fid_required = pytest.mark.skipif(
+    not _fid_available, reason="torchmetrics not available"
+)
+
+
+class TestComputeFid:
+    @fid_required
+    def test_fid_same_distribution(self) -> None:
+        """Same images should have low FID (near zero, within float tolerance)."""
+        imgs = torch.rand(32, 3, 64, 64)
+        fid = compute_fid(imgs, imgs)
+        assert fid >= -1e-6  # FID is non-negative (tiny float noise allowed)
+
+    @fid_required
+    def test_fid_different_distributions(self) -> None:
+        """Different distributions should have higher FID."""
+        real = torch.rand(32, 3, 64, 64)
+        fake = torch.rand(32, 3, 64, 64) + 0.5
+        fid = compute_fid(real, fake)
+        assert fid >= 0
+
+
+# ---------------------------------------------------------------------------
+# CLIP Score
+# ---------------------------------------------------------------------------
+
+try:
+    from src.evaluation.quality_metrics import compute_clip_score
+
+    _clip_available = True
+except ImportError:
+    _clip_available = False
+
+clip_required = pytest.mark.skipif(
+    not _clip_available, reason="transformers not available"
+)
+
+
+class TestComputeClipScore:
+    @clip_required
+    def test_clip_score_basic(self) -> None:
+        """CLIP score should be in [0, 1] range."""
+        imgs = torch.rand(4, 3, 64, 64)
+        score = compute_clip_score(imgs, "a random image")
+        assert 0 <= score <= 1
+
+    def test_clip_score_function_exists(self) -> None:
+        from src.evaluation.quality_metrics import compute_clip_score
+
+        sig = inspect.signature(compute_clip_score)
+        assert "images" in sig.parameters
+        assert "prompt" in sig.parameters
