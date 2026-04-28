@@ -15,6 +15,7 @@ from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
+from src.attack_engine.adv_gan import AdvGANAttack
 from src.attack_engine.base import Attack, AttackResult
 from src.attack_engine.diffusion_attack import DiffusionAttack
 from src.attack_engine.fgsm import FGSMAttack
@@ -42,6 +43,7 @@ logger = logging.getLogger(__name__)
 ATTACK_REGISTRY: dict[str, type[Attack]] = {
     "fgsm": FGSMAttack,
     "pgd": PGDAttack,
+    "advgan": AdvGANAttack,
     "diffusion": DiffusionAttack,
 }
 
