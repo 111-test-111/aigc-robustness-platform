@@ -85,14 +85,23 @@ class TestSaveCsv:
         with open(out, newline="") as f:
             reader = csv.reader(f)
             rows = list(reader)
-        assert rows[0] == ["metric", "value"]
-        data = {rows[i][0]: float(rows[i][1]) for i in range(1, len(rows))}
-        assert data == metrics
+        assert rows[0] == ["Metric", "Value"]
 
     def test_creates_parent_dirs(self, tmp_path: Path) -> None:
         out = tmp_path / "deep" / "nested" / "m.csv"
         save_csv({"x": 1.0}, out)
         assert out.exists()
+
+    def test_paper_friendly_format(self, tmp_path: Path) -> None:
+        metrics = {"asr": 0.8543, "lpips": 0.1234, "robust_accuracy": 0.72}
+        path = tmp_path / "metrics.csv"
+        save_csv(metrics, path)
+        content = path.read_text()
+        assert "ASR (%)" in content
+        assert "85.43" in content
+        assert "0.1234" in content
+        assert "Robust Accuracy (%)" in content
+        assert "72.00" in content
 
 
 # ---------------------------------------------------------------------------
