@@ -16,11 +16,13 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import datasets, transforms
 
 from src.attack_engine.base import Attack, AttackResult
+from src.attack_engine.diffusion_attack import DiffusionAttack
 from src.attack_engine.fgsm import FGSMAttack
 from src.attack_engine.pgd import PGDAttack
 from src.defense_engine.base import Defense, DefenseResult
 from src.defense_engine.bit_depth import BitDepthDefense
 from src.defense_engine.blur import GaussianBlurDefense
+from src.defense_engine.diffusion_purification import DiffusionPurificationDefense
 from src.defense_engine.jpeg import JPEGDefense
 from src.evaluation.attack_metrics import compute_asr, compute_queries
 from src.evaluation.defense_metrics import (
@@ -28,7 +30,9 @@ from src.evaluation.defense_metrics import (
     compute_latency,
     compute_robust_accuracy,
 )
+from src.evaluation.quality_metrics import compute_clip_score, compute_lpips
 from src.model_zoo.classifiers import load_classifier
+from src.reporting.charts import generate_sample_grid
 from src.utils.device import get_device
 from src.utils.io import save_csv, save_json, snapshot_config
 from src.utils.seed import seed_everything
@@ -38,12 +42,14 @@ logger = logging.getLogger(__name__)
 ATTACK_REGISTRY: dict[str, type[Attack]] = {
     "fgsm": FGSMAttack,
     "pgd": PGDAttack,
+    "diffusion": DiffusionAttack,
 }
 
 DEFENSE_REGISTRY: dict[str, type[Defense]] = {
     "jpeg": JPEGDefense,
     "gaussian_blur": GaussianBlurDefense,
     "bit_depth": BitDepthDefense,
+    "diffusion_purification": DiffusionPurificationDefense,
 }
 
 
@@ -117,6 +123,7 @@ def run_experiment(config_path: Path) -> Path:
     output_dir = Path(cfg.report.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "samples").mkdir(exist_ok=True)
+    (output_dir / "figures").mkdir(exist_ok=True)
 
     # Snapshot the resolved config for reproducibility
     snapshot_config(cfg, output_dir / "config.yaml")
@@ -180,6 +187,17 @@ def run_experiment(config_path: Path) -> Path:
         for k, v in queries.items():
             all_metrics[f"{attack.name}_queries_{k}"] = float(v)
 
+        # Quality metrics (if configured)
+        quality_metrics = cfg.get("metrics", {}).get("quality", [])
+        if quality_metrics and "lpips" in quality_metrics:
+            lpips_score = compute_lpips(clean, result.adversarial)
+            all_metrics[f"{attack.name}_lpips"] = lpips_score
+
+        if quality_metrics and "clip_score" in quality_metrics:
+            prompt = attack_cfg.get("prompt", "a photo")
+            clip_s = compute_clip_score(result.adversarial, prompt)
+            all_metrics[f"{attack.name}_clip_score"] = clip_s
+
         # Save adversarial samples directory (placeholder for future use)
         adv_dir = output_dir / "samples" / attack.name
         adv_dir.mkdir(exist_ok=True)
@@ -198,7 +216,30 @@ def run_experiment(config_path: Path) -> Path:
             all_metrics[f"{prefix}_latency_mean"] = lat["mean"]
 
     # ------------------------------------------------------------------
-    # 7. Persist metrics
+    # 7. Generate sample grid
+    # ------------------------------------------------------------------
+    if attack_methods:
+        first_attack, first_attack_cfg = attack_methods[0]
+        first_result = first_attack.generate(clean, labels, model, first_attack_cfg)
+
+        # Use first defense result if available
+        defended_sample = None
+        if defense_methods:
+            first_defense, first_defense_cfg = defense_methods[0]
+            d_result = first_defense.apply(first_result.adversarial, first_defense_cfg)
+            defended_sample = d_result.defended
+
+        grid_path = output_dir / "figures" / "sample_grid.png"
+        generate_sample_grid(
+            clean[:8],
+            first_result.adversarial[:8],
+            defended_sample[:8] if defended_sample is not None else None,
+            save_path=grid_path,
+        )
+        logger.info("Saved sample grid to %s", grid_path)
+
+    # ------------------------------------------------------------------
+    # 8. Persist metrics
     # ------------------------------------------------------------------
     save_json(all_metrics, output_dir / "metrics.json")
     save_csv(all_metrics, output_dir / "metrics.csv")

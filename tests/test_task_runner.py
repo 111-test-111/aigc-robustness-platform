@@ -127,3 +127,78 @@ def test_run_experiment_unknown_dataset_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Unknown dataset"):
         run_experiment(config_path)
+
+
+@pytest.mark.integration
+def test_run_experiment_with_quality_metrics(tmp_path: Path) -> None:
+    """Test task runner with LPIPS quality metric."""
+    cfg = OmegaConf.create({
+        "task": {"name": "test_quality", "seed": 0, "device": "cpu"},
+        "dataset": {
+            "name": "cifar10",
+            "root": str(tmp_path / "data"),
+            "num_samples": 2,
+            "image_size": 32,
+        },
+        "target_model": {
+            "type": "classifier",
+            "name": "resnet50",
+            "weights": "none",
+        },
+        "attacks": [{"name": "fgsm", "eps": 0.1}],
+        "defenses": [{"name": "jpeg", "quality": 50}],
+        "metrics": {
+            "attack": ["asr"],
+            "defense": ["robust_accuracy"],
+            "quality": ["lpips"],
+        },
+        "report": {
+            "output_dir": str(tmp_path / "reports" / "test_quality"),
+            "formats": ["markdown"],
+        },
+    })
+
+    config_path = tmp_path / "config.yaml"
+    OmegaConf.save(cfg, config_path)
+
+    import json
+
+    output_dir = run_experiment(config_path)
+    metrics = json.loads((output_dir / "metrics.json").read_text())
+
+    assert "fgsm_lpips" in metrics
+    assert isinstance(metrics["fgsm_lpips"], float)
+    assert (output_dir / "figures" / "sample_grid.png").exists()
+
+
+@pytest.mark.integration
+def test_run_experiment_figures_directory_created(tmp_path: Path) -> None:
+    """Verify figures directory is created even when no quality metrics are configured."""
+    cfg = OmegaConf.create({
+        "task": {"name": "test_figures", "seed": 0, "device": "cpu"},
+        "dataset": {
+            "name": "cifar10",
+            "root": str(tmp_path / "data"),
+            "num_samples": 2,
+            "image_size": 32,
+        },
+        "target_model": {
+            "type": "classifier",
+            "name": "resnet50",
+            "weights": "none",
+        },
+        "attacks": [{"name": "fgsm", "eps": 0.1}],
+        "defenses": [{"name": "jpeg", "quality": 50}],
+        "metrics": {"attack": ["asr"], "defense": ["robust_accuracy"]},
+        "report": {
+            "output_dir": str(tmp_path / "reports" / "test_figures"),
+            "formats": ["markdown"],
+        },
+    })
+
+    config_path = tmp_path / "config.yaml"
+    OmegaConf.save(cfg, config_path)
+
+    output_dir = run_experiment(config_path)
+    assert (output_dir / "figures").is_dir()
+    assert (output_dir / "figures" / "sample_grid.png").exists()
