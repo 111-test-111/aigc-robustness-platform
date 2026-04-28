@@ -1,0 +1,45 @@
+# 实验报告: {{ task_name }}
+
+## 实验配置
+
+| 项目 | 值 |
+|------|-----|
+| 任务名称 | {{ task_name }} |
+| 随机种子 | {{ seed }} |
+| 设备 | {{ device }} |
+| 数据集 | {{ dataset_name }} |
+| 样本数 | {{ num_samples }} |
+| 目标模型 | {{ model_name }} |
+
+## 攻击方法
+
+{% for attack in attacks %}
+- **{{ attack.name }}**: {% for k, v in attack.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endfor %}
+
+## 防御方法
+
+{% for defense in defenses %}
+- **{{ defense.name }}**: {% for k, v in defense.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+{% endfor %}
+
+## 评估指标
+
+| 指标 | 值 |
+|------|-----|
+{% for key, value in metrics.items() %}
+| {{ key }} | {{ "%.4f"|format(value) if value is number else value }} |
+{% endfor %}
+
+## 结论
+
+{% for attack_name, asr in attack_asrs.items() %}
+- **{{ attack_name }}** 攻击成功率: {{ "%.2f"|format(asr * 100) }}%
+{%- if asr > 0.8 %}（攻击效果显著）
+{%- elif asr > 0.5 %}（攻击效果中等）
+{%- else %}（攻击效果有限）
+{%- endif %}
+{% endfor %}
+
+---
+*报告自动生成于 {{ timestamp }}*

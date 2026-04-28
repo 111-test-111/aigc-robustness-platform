@@ -67,6 +67,7 @@ class TestPGDASRHigherThanFGSM:
         Use alpha large enough that PGD can traverse the full eps-ball
         within the allocated steps (alpha * steps >= eps).
         """
+        torch.manual_seed(42)
         pgd = PGDAttack()
         fgsm = FGSMAttack()
         model = TinyClassifier()
