@@ -1,6 +1,8 @@
 # 实验报告: {{ task_name }}
 
-## 实验配置
+> 自动生成于 {{ timestamp }}
+
+## 1. 实验配置
 
 | 项目 | 值 |
 |------|-----|
@@ -9,37 +11,66 @@
 | 设备 | {{ device }} |
 | 数据集 | {{ dataset_name }} |
 | 样本数 | {{ num_samples }} |
-| 目标模型 | {{ model_name }} |
+| 图像尺寸 | {{ image_size }} |
+| 目标模型 | {{ model_name }} ({{ model_weights }}) |
 
-## 攻击方法
+### 攻击方法
 
-{% for attack in attacks %}
-- **{{ attack.name }}**: {% for k, v in attack.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+| 名称 | 参数 |
+|------|------|
+{% for attack in attacks -%}
+| {{ attack.name }} | {% for k, v in attack.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %} |
 {% endfor %}
 
-## 防御方法
+### 防御方法
 
-{% for defense in defenses %}
-- **{{ defense.name }}**: {% for k, v in defense.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %}
+| 名称 | 参数 |
+|------|------|
+{% for defense in defenses -%}
+| {{ defense.name }} | {% for k, v in defense.items() if k != 'name' %}{{ k }}={{ v }}{% if not loop.last %}, {% endif %}{% endfor %} |
 {% endfor %}
 
-## 评估指标
+## 2. 评估指标
 
 | 指标 | 值 |
 |------|-----|
-{% for key, value in metrics.items() %}
+{% for key, value in metrics.items() -%}
 | {{ key }} | {{ "%.4f"|format(value) if value is number else value }} |
 {% endfor %}
 
-## 结论
+{% if robustness_score is not none %}
+### 综合鲁棒性评分
 
-{% for attack_name, asr in attack_asrs.items() %}
-- **{{ attack_name }}** 攻击成功率: {{ "%.2f"|format(asr * 100) }}%
-{%- if asr > 0.8 %}（攻击效果显著）
-{%- elif asr > 0.5 %}（攻击效果中等）
-{%- else %}（攻击效果有限）
-{%- endif %}
+**{{ "%.4f"|format(robustness_score) }}** / 1.0000
+
+> 权重: RA={{ weights.robust_accuracy }}, (1-ASR)={{ weights.inverse_asr }}, 语义质量={{ weights.semantic_quality }}, 干净保留={{ weights.clean_retention }}, 效率={{ weights.efficiency }}
+{% endif %}
+
+## 3. 可视化
+
+{% if figures.sample_grid %}
+### 样本对比
+
+![样本对比图](figures/sample_grid.png)
+{% endif %}
+
+{% if figures.radar %}
+### 鲁棒性雷达图
+
+![雷达图](figures/radar.png)
+{% endif %}
+
+{% if figures.metric_bars %}
+### 指标对比
+
+![指标柱状图](figures/metric_bars.png)
+{% endif %}
+
+## 4. 结论
+
+{% for line in conclusions -%}
+- {{ line }}
 {% endfor %}
 
 ---
-*报告自动生成于 {{ timestamp }}*
+*报告由 AIGC 鲁棒性平台自动生成 | {{ timestamp }}*

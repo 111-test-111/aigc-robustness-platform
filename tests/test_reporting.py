@@ -70,7 +70,95 @@ def test_generate_report(tmp_path: Path) -> None:
     assert "fgsm_vs_jpeg_robust_accuracy" in content
 
     # Timestamp
-    assert "报告自动生成于" in content
+    assert "自动生成于" in content
+
+    # Robustness score section
+    assert "综合鲁棒性评分" in content
+
+    # Section headings
+    assert "## 1. 实验配置" in content
+    assert "## 2. 评估指标" in content
+    assert "## 4. 结论" in content
+
+
+def test_generate_report_with_figures(tmp_path: Path) -> None:
+    """Test report with figures and robustness score."""
+    from src.reporting.markdown_report import generate_report
+
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
+    (exp_dir / "figures").mkdir()
+    (exp_dir / "figures" / "sample_grid.png").write_bytes(b"fake")
+
+    cfg = OmegaConf.create({
+        "task": {"name": "test", "seed": 42, "device": "cpu"},
+        "dataset": {
+            "name": "cifar10",
+            "root": "data",
+            "num_samples": 10,
+            "image_size": 32,
+        },
+        "target_model": {"name": "resnet50", "weights": "none"},
+        "attacks": [{"name": "fgsm", "eps": 0.03}],
+        "defenses": [{"name": "jpeg", "quality": 75}],
+        "report": {"output_dir": str(exp_dir), "formats": ["markdown"]},
+    })
+    OmegaConf.save(cfg, exp_dir / "config.yaml")
+
+    metrics = {"fgsm_asr": 0.85, "fgsm_vs_jpeg_robust_accuracy": 0.72}
+    (exp_dir / "metrics.json").write_text(json.dumps(metrics))
+
+    report_path = generate_report(exp_dir)
+    content = report_path.read_text()
+
+    # Figure reference present
+    assert "sample_grid.png" in content
+
+    # Robustness score present
+    assert "综合鲁棒性评分" in content
+
+    # Conclusions present
+    assert "结论" in content
+
+    # ASR value in conclusion
+    assert "85" in content or "0.85" in content
+
+
+def test_generate_report_no_figures(tmp_path: Path) -> None:
+    """Report omits figure sections when no figures exist."""
+    from src.reporting.markdown_report import generate_report
+
+    exp_dir = tmp_path / "experiment"
+    exp_dir.mkdir()
+
+    cfg = OmegaConf.create({
+        "task": {"name": "test", "seed": 42, "device": "cpu"},
+        "dataset": {
+            "name": "cifar10",
+            "root": "data",
+            "num_samples": 10,
+            "image_size": 32,
+        },
+        "target_model": {"name": "resnet50", "weights": "none"},
+        "attacks": [{"name": "fgsm", "eps": 0.03}],
+        "defenses": [],
+        "report": {"output_dir": str(exp_dir), "formats": ["markdown"]},
+    })
+    OmegaConf.save(cfg, exp_dir / "config.yaml")
+
+    metrics = {"fgsm_asr": 0.30}
+    (exp_dir / "metrics.json").write_text(json.dumps(metrics))
+
+    report_path = generate_report(exp_dir)
+    content = report_path.read_text()
+
+    # No figure references
+    assert "sample_grid.png" not in content
+    assert "radar.png" not in content
+    assert "metric_bars.png" not in content
+
+    # Robustness score still present
+    assert "综合鲁棒性评分" in content
 
 
 def test_generate_report_low_asr(tmp_path: Path) -> None:
