@@ -7,3 +7,11 @@ def test_baseline_config_loads():
     assert cfg.task.seed == 42
     assert len(cfg.attacks) == 2
     assert len(cfg.defenses) == 3
+
+
+def test_diffusion_config_loads():
+    cfg = OmegaConf.load("configs/diffusion_attack_resnet50.yaml")
+    assert cfg.task.name == "diffusion_attack_resnet50"
+    assert len(cfg.attacks) == 3
+    assert cfg.attacks[2].name == "diffusion"
+    assert "lpips" in cfg.metrics.quality
