@@ -1,0 +1,46 @@
+task:
+  name: baseline_resnet50
+  seed: 42
+  device: cuda
+
+dataset:
+  name: cifar10
+  root: data/raw/cifar10
+  num_samples: 100
+  image_size: 224
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+  - name: pgd
+    eps: 0.03
+    alpha: 0.007
+    steps: 20
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/baseline_resnet50
+  formats:
+    - markdown
