@@ -30,6 +30,7 @@ from src.defense_engine.blur import GaussianBlurDefense
 from src.defense_engine.diffusion_purification import DiffusionPurificationDefense
 from src.defense_engine.jpeg import JPEGDefense
 from src.model_zoo.classifiers import load_classifier
+from src.utils.device import get_device
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,8 @@ def _structured_to_defense_table(structured: dict) -> list[list[str]]:
 
 def _build_interactive_tab(model_name: str, device: str) -> None:
     """Build the interactive single-image demo tab."""
-    model = load_classifier(model_name, "imagenet", torch.device(device))
+    resolved_device = get_device(device)
+    model = load_classifier(model_name, "imagenet", resolved_device)
 
     attacks = {
         "FGSM": FGSMAttack(),
@@ -206,9 +208,9 @@ def _build_interactive_tab(model_name: str, device: str) -> None:
         if image is None:
             return (None, None, None, "No image provided", "No image provided", "")
 
-        batch = to_tensor(image).unsqueeze(0)
+        batch = to_tensor(image).unsqueeze(0).to(resolved_device)
         with torch.no_grad():
-            labels = torch.tensor([model(batch).argmax(dim=1).item()])
+            labels = model(batch).argmax(dim=1)
 
         attack = attacks[attack_name]
         config: dict[str, Any] = {"eps": eps}
@@ -233,9 +235,13 @@ def _build_interactive_tab(model_name: str, device: str) -> None:
             d_result = defense.apply(result.adversarial, d_config)
             defended = d_result.defended
 
-        orig_img = to_pil(batch[0].clamp(0, 1))
-        adv_img = to_pil(result.adversarial[0].clamp(0, 1))
-        def_img = to_pil(defended[0].clamp(0, 1)) if defended is not None else None
+        orig_img = to_pil(batch[0].detach().cpu().clamp(0, 1))
+        adv_img = to_pil(result.adversarial[0].detach().cpu().clamp(0, 1))
+        def_img = (
+            to_pil(defended[0].detach().cpu().clamp(0, 1))
+            if defended is not None
+            else None
+        )
 
         delta = (result.adversarial - batch).abs().max().item()
         success = "Yes" if result.success[0].item() else "No"
@@ -710,12 +716,12 @@ def _build_compare_tab() -> None:
 # Main App
 # ---------------------------------------------------------------------------
 
-def create_app(model_name: str = "resnet50", device: str = "cpu") -> gr.Blocks:
+def create_app(model_name: str = "resnet50", device: str = "auto") -> gr.Blocks:
     """Create the Gradio application.
 
     Args:
         model_name: Name of the classifier to load from the model zoo.
-        device: Device string for inference (e.g. "cpu" or "cuda").
+        device: Device string for inference (e.g. "auto", "mps", "cuda", or "cpu").
 
     Returns:
         A gr.Blocks instance with the full UI.
@@ -744,7 +750,7 @@ def main() -> None:
         description="Launch the AIGC Robustness Platform web UI"
     )
     parser.add_argument("--model", default="resnet50", help="Classifier model name")
-    parser.add_argument("--device", default="cpu", help="Inference device")
+    parser.add_argument("--device", default="auto", help="Inference device")
     parser.add_argument("--port", type=int, default=7860, help="Server port")
     parser.add_argument("--share", action="store_true", help="Create a public link")
     args = parser.parse_args()

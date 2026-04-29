@@ -478,13 +478,22 @@ def run_experiment(config_path: Path) -> Path:
                     bar_labels.append(atk.name)
             if bar_metrics_list:
                 bars_path = output_dir / "figures" / "metric_bars.png"
-                generate_metric_bars(bar_metrics_list, bar_labels, save_path=bars_path, title="攻击方法对比")
+                generate_metric_bars(
+                    bar_metrics_list,
+                    bar_labels,
+                    save_path=bars_path,
+                    title="Attack Method Comparison",
+                )
 
         # Radar chart for first attack
         radar_metrics = _build_radar_metrics(all_metrics)
         if radar_metrics:
             radar_path = output_dir / "figures" / "radar.png"
-            generate_radar(radar_metrics, save_path=radar_path, title="鲁棒性雷达图")
+            generate_radar(
+                radar_metrics,
+                save_path=radar_path,
+                title="Robustness Radar",
+            )
 
     # ------------------------------------------------------------------
     # 9. Persist metrics

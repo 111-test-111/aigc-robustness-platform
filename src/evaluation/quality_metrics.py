@@ -89,11 +89,16 @@ def compute_fid(real_images: torch.Tensor, generated_images: torch.Tensor) -> fl
             "FID computed with only %d samples (< 50). Results are for reference only.", n
         )
 
-    # torchmetrics FID expects uint8 images [0, 255]
-    real_uint8 = (real_images.clamp(0, 1) * 255).to(torch.uint8)
-    gen_uint8 = (generated_images.clamp(0, 1) * 255).to(torch.uint8)
+    # Keep metric and inputs on the same device to avoid CPU/GPU mismatch.
+    device = real_images.device
 
-    fid = FrechetInceptionDistance(feature=64)  # smaller feature dim for speed
+    # torchmetrics FID expects uint8 images [0, 255]
+    real_uint8 = (real_images.clamp(0, 1) * 255).to(device=device, dtype=torch.uint8)
+    gen_uint8 = (generated_images.clamp(0, 1) * 255).to(
+        device=device, dtype=torch.uint8
+    )
+
+    fid = FrechetInceptionDistance(feature=64).to(device)  # smaller feature dim for speed
     fid.update(real_uint8, real=True)
     fid.update(gen_uint8, real=False)
     return float(fid.compute().item())

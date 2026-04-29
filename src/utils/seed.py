@@ -8,8 +8,8 @@ import torch
 def seed_everything(seed: int) -> None:
     """Set random seeds for reproducibility across all backends.
 
-    Sets the seed for Python's ``random``, NumPy, PyTorch (CPU and all
-    CUDA devices), and configures the cuBLAS workspace to suppress
+    Sets the seed for Python's ``random``, NumPy, PyTorch (CPU/MPS and
+    all CUDA devices), and configures the cuBLAS workspace to suppress
     non-determinism warnings.
     """
     random.seed(seed)

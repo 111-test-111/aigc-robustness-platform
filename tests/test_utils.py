@@ -8,6 +8,7 @@ import pytest
 import torch
 from omegaconf import OmegaConf
 
+import src.utils.device as device_utils
 from src.utils.device import get_device
 from src.utils.io import save_csv, save_json, snapshot_config
 from src.utils.seed import seed_everything
@@ -49,10 +50,37 @@ class TestGetDevice:
         dev = get_device("cpu")
         assert dev == torch.device("cpu")
 
-    def test_auto_returns_valid_device(self) -> None:
+    def test_mps_detection_requires_apple_silicon(self, monkeypatch) -> None:
+        monkeypatch.setattr(device_utils.platform, "system", lambda: "Linux")
+        monkeypatch.setattr(device_utils.platform, "machine", lambda: "x86_64")
+
+        assert device_utils._is_supported_apple_silicon_mps() is False
+
+    def test_auto_prefers_mps_on_supported_apple_silicon(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            device_utils, "_is_supported_apple_silicon_mps", lambda: True
+        )
+
         dev = get_device("auto")
-        assert isinstance(dev, torch.device)
-        assert dev.type in ("cpu", "cuda")
+        assert dev == torch.device("mps")
+
+    def test_auto_uses_cuda_on_non_apple_gpu_machine(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            device_utils, "_is_supported_apple_silicon_mps", lambda: False
+        )
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+
+        dev = get_device("auto")
+        assert dev == torch.device("cuda")
+
+    def test_auto_falls_back_to_cpu_without_gpu(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            device_utils, "_is_supported_apple_silicon_mps", lambda: False
+        )
+        monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+        dev = get_device("auto")
+        assert dev == torch.device("cpu")
 
 
 # ---------------------------------------------------------------------------

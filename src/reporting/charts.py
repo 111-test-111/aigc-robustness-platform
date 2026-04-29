@@ -14,42 +14,17 @@ import torch
 
 logger = logging.getLogger(__name__)
 
-# Configure matplotlib for Chinese text support
+# Configure matplotlib once
 _FONT_CONFIGURED = False
 
 
-def _configure_chinese_font() -> None:
-    """Configure matplotlib to render Chinese characters correctly."""
+def _configure_plot_font() -> None:
+    """Configure matplotlib defaults for stable chart rendering."""
     global _FONT_CONFIGURED
     if _FONT_CONFIGURED:
         return
-
-    import matplotlib.font_manager as fm
-
-    # Try common Chinese fonts in order of preference
-    chinese_fonts = [
-        "PingFang SC", "Heiti SC", "STHeiti", "SimHei", "Microsoft YaHei",
-        "WenQuanYi Micro Hei", "Noto Sans CJK SC", "Source Han Sans SC",
-    ]
-
-    available_fonts = {f.name for f in fm.fontManager.ttflist}
-    chosen_font = None
-
-    for font in chinese_fonts:
-        if font in available_fonts:
-            chosen_font = font
-            break
-
-    if chosen_font:
-        plt.rcParams["font.sans-serif"] = [chosen_font] + plt.rcParams.get("font.sans-serif", [])
-        plt.rcParams["axes.unicode_minus"] = False
-        logger.info("Using Chinese font: %s", chosen_font)
-    else:
-        logger.warning(
-            "No Chinese font found. CJK characters in charts may not render correctly. "
-            "Install a Chinese font (e.g., Noto Sans CJK) for proper rendering."
-        )
-
+    plt.rcParams["axes.unicode_minus"] = False
+    logger.debug("Matplotlib plot font configuration initialized")
     _FONT_CONFIGURED = True
 
 
@@ -80,7 +55,7 @@ def generate_sample_grid(
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    _configure_chinese_font()
+    _configure_plot_font()
 
     n = min(clean.shape[0], max_samples)
     has_defended = defended is not None
@@ -138,7 +113,7 @@ def generate_metric_bars(
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    _configure_chinese_font()
+    _configure_plot_font()
 
     if not metrics_list or not metrics_list[0]:
         return save_path
@@ -184,7 +159,7 @@ def generate_radar(
     """
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
-    _configure_chinese_font()
+    _configure_plot_font()
 
     categories = list(metrics.keys())
     values = list(metrics.values())
