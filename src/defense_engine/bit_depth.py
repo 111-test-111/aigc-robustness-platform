@@ -30,4 +30,8 @@ class BitDepthDefense(Defense):
         defended = torch.clamp(defended, 0, 1)
         latency = time.perf_counter() - start
 
-        return DefenseResult(defended=defended, latency_sec=latency)
+        return DefenseResult(
+            defended=defended,
+            latency_sec=latency,
+            metadata={"bits": bits, "levels": levels},
+        )

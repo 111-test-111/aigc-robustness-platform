@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 import torch
+import torchvision.transforms.functional as TF
 from torchvision.transforms import ToPILImage
 
 from src.attack_engine.base import Attack, AttackResult
@@ -17,6 +18,10 @@ class DiffusionAttack(Attack):
     Uses text-guided image-to-image generation to create candidates, then
     filters by target classifier prediction. Among successful candidates,
     selects the one with highest LPIPS distance (most natural-looking perturbation).
+
+    Supports two backends:
+    - ``sd``: Real Stable Diffusion pipeline (requires diffusers + model weights)
+    - ``mock``: Simulated diffusion using controllable image transforms (for testing)
     """
 
     name: str = "diffusion"
@@ -28,9 +33,8 @@ class DiffusionAttack(Attack):
         target_model: torch.nn.Module,
         config: dict,
     ) -> AttackResult:
-        from src.model_zoo.generators import load_sd_pipeline
-
         # --- Config ---
+        backend: str = config.get("backend", "sd")
         model_id: str = config.get(
             "generator", "stable-diffusion-v1-5/stable-diffusion-v1-5"
         )
@@ -42,13 +46,17 @@ class DiffusionAttack(Attack):
 
         start = time.perf_counter()
 
-        # --- Load pipeline ---
-        pipe = load_sd_pipeline(model_id, batch.device)
-
-        # --- Generate candidates ---
-        all_candidates = self._generate_candidates(
-            pipe, batch, prompt, strength, guidance_scale, num_candidates
-        )
+        # --- Generate candidates based on backend ---
+        if backend == "mock":
+            all_candidates = self._generate_mock_candidates(
+                batch, strength, num_candidates
+            )
+        else:
+            from src.model_zoo.generators import load_sd_pipeline
+            pipe = load_sd_pipeline(model_id, batch.device)
+            all_candidates = self._generate_candidates(
+                pipe, batch, prompt, strength, guidance_scale, num_candidates
+            )
 
         # --- Evaluate and select best adversarial ---
         best_adv, best_success, queries = self._select_best(
@@ -62,6 +70,7 @@ class DiffusionAttack(Attack):
             success=best_success,
             queries=queries,
             metadata={
+                "backend": backend,
                 "generator": model_id,
                 "prompt": prompt,
                 "strength": strength,
@@ -74,6 +83,60 @@ class DiffusionAttack(Attack):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _generate_mock_candidates(
+        self,
+        batch: torch.Tensor,
+        strength: float,
+        num_candidates: int,
+    ) -> torch.Tensor:
+        """Generate mock diffusion candidates using controllable transforms.
+
+        Simulates diffusion output by applying:
+        - Gaussian noise scaled by strength
+        - Random brightness/contrast jitter
+        - Slight spatial blur
+
+        This is useful for testing the pipeline without a real SD model.
+
+        Args:
+            batch: (B, C, H, W) input images in [0, 1]
+            strength: Controls noise magnitude (0 = no change, 1 = full noise)
+            num_candidates: Number of candidate variants per image
+
+        Returns:
+            Tensor of shape (num_candidates, B, C, H, W) in [0, 1].
+        """
+        import torchvision.transforms as T
+
+        batch_size = batch.shape[0]
+        candidate_list: list[torch.Tensor] = []
+
+        # Define transform pipeline simulating diffusion output
+        jitter = T.ColorJitter(brightness=0.3 * strength, contrast=0.3 * strength, saturation=0.2 * strength)
+        blur = T.GaussianBlur(kernel_size=3, sigma=(0.1, 0.5) if strength < 0.5 else (0.5, 1.5))
+
+        for _ in range(num_candidates):
+            candidate_batch: list[torch.Tensor] = []
+            for img_idx in range(batch_size):
+                img = batch[img_idx].clamp(0, 1).cpu()
+
+                # Add Gaussian noise scaled by strength
+                noise = torch.randn_like(img) * strength * 0.1
+                noisy_img = torch.clamp(img + noise, 0, 1)
+
+                # Apply jitter and blur
+                pil_img = TF.to_pil_image(noisy_img)
+                transformed = jitter(pil_img)
+                transformed = blur(transformed)
+
+                candidate_batch.append(TF.to_tensor(transformed).float())
+
+            candidate_list.append(
+                torch.stack(candidate_batch).to(batch.device)
+            )
+
+        return torch.stack(candidate_list)
 
     def _generate_candidates(
         self,
@@ -104,9 +167,8 @@ class DiffusionAttack(Attack):
                     guidance_scale=guidance_scale,
                     num_inference_steps=20,
                 )
-                generated = torch.tensor(
-                    result.images[0], dtype=torch.float32
-                ).permute(2, 0, 1) / 255.0
+                # Convert PIL image to tensor correctly
+                generated = TF.to_tensor(result.images[0]).float()
                 candidate_batch.append(generated)
             candidate_list.append(
                 torch.stack(candidate_batch).to(batch.device)

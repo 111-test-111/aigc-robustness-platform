@@ -1,0 +1,38 @@
+task:
+  name: smoke_cpu
+  seed: 42
+  device: cpu
+
+dataset:
+  name: cifar10
+  root: data/raw/cifar10
+  num_samples: 2
+  image_size: 32
+  download: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: none
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+
+defenses:
+  - name: jpeg
+    quality: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/smoke_cpu
+  formats:
+    - markdown

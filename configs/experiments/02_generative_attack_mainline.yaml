@@ -1,5 +1,7 @@
+# 生成式攻击主线实验
+# DiffusionAttack + JPEG / DiffusionPurification
 task:
-  name: diffusion_attack_resnet50
+  name: generative_attack_mainline
   seed: 42
   device: auto
 
@@ -19,12 +21,6 @@ target_model:
   weights: imagenet
 
 attacks:
-  - name: fgsm
-    eps: 0.03
-  - name: pgd
-    eps: 0.03
-    alpha: 0.007
-    steps: 20
   - name: diffusion
     backend: sd
     generator: stable-diffusion-v1-5/stable-diffusion-v1-5
@@ -49,12 +45,13 @@ metrics:
   quality:
     - lpips
     - clip_score
+    - fid
   defense:
     - robust_accuracy
     - clean_accuracy_drop
     - latency
 
 report:
-  output_dir: reports/diffusion_attack_resnet50
+  output_dir: reports/generative_attack_mainline
   formats:
     - markdown

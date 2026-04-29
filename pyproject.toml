@@ -30,6 +30,9 @@ web = ["gradio>=4.0"]
 [tool.pytest.ini_options]
 markers = [
     "integration: end-to-end integration tests (deselect with '-m not integration')",
+    "unit: Unit tests (no network, fast)",
+    "slow: Slow tests (real models, network)",
+    "e2e: End-to-end tests (full pipeline)",
 ]
 
 [tool.hatch.build.targets.wheel]

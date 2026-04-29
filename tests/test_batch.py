@@ -24,8 +24,8 @@ def test_run_batch(tmp_path: Path) -> None:
         cfg = OmegaConf.create({
             "task": {"name": name, "seed": i, "device": "cpu"},
             "dataset": {
-                "name": "cifar10",
-                "root": str(tmp_path / "data"),
+                "name": "synthetic",
+                "root": "",
                 "num_samples": 2,
                 "image_size": 32,
             },
@@ -62,8 +62,8 @@ def test_run_batch_comparison_charts(tmp_path: Path) -> None:
         cfg = OmegaConf.create({
             "task": {"name": name, "seed": i, "device": "cpu"},
             "dataset": {
-                "name": "cifar10",
-                "root": str(tmp_path / "data"),
+                "name": "synthetic",
+                "root": "",
                 "num_samples": 2,
                 "image_size": 32,
             },
@@ -119,8 +119,8 @@ def test_run_batch_yml_extension(tmp_path: Path) -> None:
     cfg = OmegaConf.create({
         "task": {"name": "yml_test", "seed": 0, "device": "cpu"},
         "dataset": {
-            "name": "cifar10",
-            "root": str(tmp_path / "data"),
+            "name": "synthetic",
+            "root": "",
             "num_samples": 2,
             "image_size": 32,
         },
@@ -155,8 +155,8 @@ def test_run_batch_comparison_json_content(tmp_path: Path) -> None:
         cfg = OmegaConf.create({
             "task": {"name": name, "seed": i, "device": "cpu"},
             "dataset": {
-                "name": "cifar10",
-                "root": str(tmp_path / "data"),
+                "name": "synthetic",
+                "root": "",
                 "num_samples": 2,
                 "image_size": 32,
             },

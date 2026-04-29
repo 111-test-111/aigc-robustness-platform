@@ -31,4 +31,8 @@ class GaussianBlurDefense(Defense):
         defended = blur(batch)
         latency = time.perf_counter() - start
 
-        return DefenseResult(defended=defended, latency_sec=latency)
+        return DefenseResult(
+            defended=defended,
+            latency_sec=latency,
+            metadata={"kernel_size": kernel_size, "sigma": sigma},
+        )

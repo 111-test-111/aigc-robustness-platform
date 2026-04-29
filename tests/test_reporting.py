@@ -77,8 +77,8 @@ def test_generate_report(tmp_path: Path) -> None:
 
     # Section headings
     assert "## 1. 实验配置" in content
-    assert "## 2. 评估指标" in content
-    assert "## 4. 结论" in content
+    assert "## 2. 攻击评估" in content
+    assert "## 6. 结论" in content
 
 
 def test_generate_report_with_figures(tmp_path: Path) -> None:

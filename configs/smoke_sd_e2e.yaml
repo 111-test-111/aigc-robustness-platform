@@ -1,0 +1,46 @@
+task:
+  name: smoke_sd_e2e
+  seed: 42
+  device: auto
+
+dataset:
+  name: synthetic
+  root: ""
+  num_samples: 1
+  image_size: 64
+  batch_size: 1
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: none
+
+attacks:
+  - name: diffusion
+    backend: sd
+    generator: hf-internal-testing/tiny-stable-diffusion-pipe
+    prompt: "a high quality photo"
+    strength: 0.5
+    guidance_scale: 1.0
+    num_candidates: 1
+
+defenses:
+  - name: diffusion_purification
+    backend: sd
+    model_id: hf-internal-testing/tiny-stable-diffusion-pipe
+    noise_level: 0.05
+    steps: 2
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/smoke_sd_e2e
+  formats:
+    - markdown

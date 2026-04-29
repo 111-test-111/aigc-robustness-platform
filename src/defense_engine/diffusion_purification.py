@@ -18,6 +18,7 @@ import logging
 import time
 
 import torch
+import torchvision.transforms.functional as TF
 from torchvision.transforms import GaussianBlur
 
 from src.defense_engine.base import Defense, DefenseResult
@@ -26,7 +27,15 @@ logger = logging.getLogger(__name__)
 
 
 class DiffusionPurificationDefense(Defense):
-    """Apply diffusion-based purification to adversarial images."""
+    """Apply diffusion-based purification to adversarial images.
+
+    Supports two backends:
+    - ``sd``: Real Stable Diffusion img2img with low strength (primary)
+    - ``mock``: Iterative Gaussian blur denoising (for testing/offline use)
+
+    When SD is unavailable and backend is ``sd``, falls back to blur with
+    a warning. The fallback is recorded in metadata.
+    """
 
     name = "diffusion_purification"
 
@@ -39,6 +48,7 @@ class DiffusionPurificationDefense(Defense):
                 - noise_level (float): sigma_t for forward noise, default 0.1
                 - steps (int): reverse-diffusion steps, default 50
                 - model_id (str): diffusion model ID for SD pipeline
+                - backend (str): "sd" or "mock", default "sd"
 
         Returns:
             DefenseResult with defended samples and wall-clock latency.
@@ -48,6 +58,7 @@ class DiffusionPurificationDefense(Defense):
         model_id: str = config.get(
             "model_id", "stable-diffusion-v1-5/stable-diffusion-v1-5"
         )
+        backend: str = config.get("backend", "sd")
 
         start = time.perf_counter()
 
@@ -56,20 +67,34 @@ class DiffusionPurificationDefense(Defense):
         noisy = torch.clamp(batch + noise, 0, 1)
 
         # Step 2: Reverse diffusion -- denoise
-        try:
-            defended = self._denoise_with_sd(noisy, model_id, steps, batch.device)
-        except (ImportError, RuntimeError, OSError) as exc:
-            logger.warning(
-                "SD pipeline unavailable (%s); falling back to iterative blur denoising",
-                exc,
-            )
+        actual_backend = backend
+        if backend == "mock":
             defended = self._denoise_simple(noisy, steps)
+            actual_backend = "gaussian_blur_fallback"
+        else:
+            try:
+                defended = self._denoise_with_sd(noisy, model_id, steps, batch.device)
+                actual_backend = "stable_diffusion"
+            except (ImportError, RuntimeError, OSError) as exc:
+                logger.warning(
+                    "SD pipeline unavailable (%s); falling back to iterative blur denoising",
+                    exc,
+                )
+                defended = self._denoise_simple(noisy, steps)
+                actual_backend = "gaussian_blur_fallback"
 
         latency = time.perf_counter() - start
 
         return DefenseResult(
             defended=torch.clamp(defended, 0, 1),
             latency_sec=latency,
+            metadata={
+                "configured_backend": backend,
+                "actual_backend": actual_backend,
+                "model_id": model_id,
+                "noise_level": noise_level,
+                "steps": steps,
+            },
         )
 
     # ------------------------------------------------------------------
@@ -92,15 +117,17 @@ class DiffusionPurificationDefense(Defense):
         to_pil = ToPILImage()
 
         denoised: list[torch.Tensor] = []
+        denoise_strength = max(0.3, min(0.9, 1.0 / max(steps, 1)))
         for img in noisy:
             pil_img = to_pil(img.clamp(0, 1).cpu())
             result = pipe(
                 prompt="a clean photo",
                 image=pil_img,
-                strength=0.3,
+                strength=denoise_strength,
                 num_inference_steps=steps,
             )
-            tensor = torch.tensor(result.images[0]).permute(2, 0, 1).float() / 255.0
+            # Convert PIL image to tensor correctly
+            tensor = TF.to_tensor(result.images[0]).float()
             denoised.append(tensor)
 
         return torch.stack(denoised).to(device)

@@ -39,6 +39,16 @@ def generate_report(experiment_dir: Path) -> Path:
     with open(metrics_path) as f:
         metrics: dict[str, float | str] = json.load(f)
 
+    # Load structured metrics if available
+    structured_path = experiment_dir / "structured_metrics.json"
+    structured_attacks: dict = {}
+    structured_defenses: dict = {}
+    if structured_path.exists():
+        with open(structured_path) as f:
+            structured = json.load(f)
+            structured_attacks = structured.get("attacks", {})
+            structured_defenses = structured.get("defenses", {})
+
     # Resolve attacks / defenses to plain dicts for the template
     attacks = [dict(a) for a in cfg.attacks]
     defenses = [dict(d) for d in cfg.defenses]
@@ -78,6 +88,8 @@ def generate_report(experiment_dir: Path) -> Path:
         attacks=attacks,
         defenses=defenses,
         metrics=metrics,
+        structured_attacks=structured_attacks,
+        structured_defenses=structured_defenses,
         robustness_score=robustness_score,
         weights=DEFAULT_WEIGHTS,
         figures=figures,
@@ -96,10 +108,23 @@ def _generate_conclusions(metrics: dict, cfg) -> list[str]:
     """Auto-generate conclusion lines from metrics."""
     conclusions: list[str] = []
 
-    # Attack effectiveness
-    asr_keys = [k for k in metrics if k.endswith("_asr")]
+    # Attack effectiveness. Prefer the stricter ASR computed on samples that
+    # the clean model originally classified correctly. Fall back to legacy ASR
+    # only when the stricter metric is unavailable.
+    asr_keys = [k for k in metrics if k.endswith("_asr_on_clean_correct")]
+    if not asr_keys:
+        asr_keys = [
+            k
+            for k in metrics
+            if k.endswith("_asr")
+            and not k.endswith("_untargeted_asr")
+            and not k.endswith("_targeted_asr")
+        ]
     for key in asr_keys:
-        attack_name = key.replace("_asr", "")
+        if key.endswith("_asr_on_clean_correct"):
+            attack_name = key.removesuffix("_asr_on_clean_correct")
+        else:
+            attack_name = key.removesuffix("_asr")
         asr = metrics[key]
         if asr > 0.8:
             conclusions.append(f"{attack_name} 攻击效果显著 (ASR={asr:.2%})")

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import torch
 
 
@@ -9,6 +9,7 @@ class DefenseResult:
 
     defended: torch.Tensor  # (B, C, H, W) defended samples
     latency_sec: float  # processing time in seconds
+    metadata: dict = field(default_factory=dict)
 
 
 class Defense(ABC):

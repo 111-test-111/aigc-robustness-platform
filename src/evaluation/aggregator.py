@@ -35,17 +35,23 @@ def compute_robustness_score(
     w = weights or DEFAULT_WEIGHTS
 
     # --- Robust accuracy ---------------------------------------------------
-    ra = metrics.get("robust_accuracy", 0.0)
+    ra = metrics.get("robust_accuracy", _suffix_best(metrics, "_robust_accuracy", max, 0.0))
 
     # --- Inverse ASR (attack success rate) ---------------------------------
     asr = metrics.get(
-        "asr", metrics.get("fgsm_asr", metrics.get("pgd_asr", 0.0))
+        "asr",
+        _suffix_best(
+            metrics,
+            "_asr_on_clean_correct",
+            max,
+            _suffix_best(metrics, "_untargeted_asr", max, _suffix_best(metrics, "_asr", max, 0.0)),
+        ),
     )
 
     # --- Semantic quality --------------------------------------------------
     # LPIPS is a perceptual distance (lower = better).  Convert to a
     # quality score in [0, 1] where 1 = perfect preservation.
-    lpips = metrics.get("lpips", metrics.get("fgsm_lpips", None))
+    lpips = metrics.get("lpips", _suffix_best(metrics, "_lpips", min, None))
     if lpips is not None:
         semantic_quality: float = max(0.0, 1.0 - lpips)
     else:
@@ -54,12 +60,16 @@ def compute_robustness_score(
     # --- Clean accuracy retention ------------------------------------------
     # clean_accuracy_drop measures how much accuracy dropped on clean data
     # after adversarial training.  A drop of 0 means perfect retention.
-    cad = metrics.get("clean_accuracy_drop", 0.0)
+    cad = metrics.get(
+        "clean_accuracy_drop",
+        _suffix_best(metrics, "_clean_accuracy_drop", max, 0.0),
+    )
 
     # --- Efficiency --------------------------------------------------------
     # Normalise latency: 0 s -> 1.0, >= LATENCY_CAP s -> 0.0.
     latency = metrics.get(
-        "latency_mean", metrics.get("fgsm_vs_jpeg_latency_mean", None)
+        "latency_mean",
+        _suffix_best(metrics, "_latency_mean", min, None),
     )
     if latency is not None:
         efficiency: float = max(0.0, 1.0 - latency / _LATENCY_CAP)
@@ -76,3 +86,15 @@ def compute_robustness_score(
     )
 
     return float(max(0.0, min(1.0, score)))
+
+
+def _suffix_best(metrics: dict[str, float], suffix: str, reducer, default):
+    """Return a reduced value for numeric metrics ending with *suffix*."""
+    values = [
+        float(v)
+        for k, v in metrics.items()
+        if k.endswith(suffix) and isinstance(v, (int, float))
+    ]
+    if not values:
+        return default
+    return reducer(values)

@@ -109,6 +109,7 @@ clip_required = pytest.mark.skipif(
 
 class TestComputeClipScore:
     @clip_required
+    @pytest.mark.slow
     def test_clip_score_basic(self) -> None:
         """CLIP score should be in [0, 1] range."""
         imgs = torch.rand(4, 3, 64, 64)

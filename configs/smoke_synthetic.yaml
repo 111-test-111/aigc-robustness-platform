@@ -1,0 +1,37 @@
+task:
+  name: smoke_synthetic
+  seed: 42
+  device: cpu
+
+dataset:
+  name: synthetic
+  root: ""
+  num_samples: 4
+  image_size: 32
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: none
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+
+defenses:
+  - name: jpeg
+    quality: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/smoke_synthetic
+  formats:
+    - markdown

@@ -26,11 +26,12 @@ class JPEGDefense(Defense):
             DefenseResult with JPEG-compressed images and wall-clock latency
         """
         quality: int = config.get("quality", 75)
+        device = batch.device
 
         start = time.perf_counter()
         defended: list[torch.Tensor] = []
         for i in range(batch.shape[0]):
-            img = TF.to_pil_image(batch[i].clamp(0, 1))
+            img = TF.to_pil_image(batch[i].clamp(0, 1).cpu())
             buf = io.BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
@@ -39,6 +40,7 @@ class JPEGDefense(Defense):
 
         latency = time.perf_counter() - start
         return DefenseResult(
-            defended=torch.stack(defended),
+            defended=torch.stack(defended).to(device),
             latency_sec=latency,
+            metadata={"quality": quality, "backend": "pil_jpeg"},
         )

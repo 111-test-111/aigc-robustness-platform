@@ -1,5 +1,6 @@
+# 防御消融实验 - JPEG 防御
 task:
-  name: diffusion_attack_resnet50
+  name: defense_ablation_jpeg
   seed: 42
   device: auto
 
@@ -7,9 +8,9 @@ dataset:
   name: imagenet_subset
   root: data/raw/imagenet_subset/images
   manifest: data/raw/imagenet_subset/manifest.csv
-  num_samples: 50
-  image_size: 512
-  batch_size: 4
+  num_samples: 100
+  image_size: 224
+  batch_size: 16
   download: false
   strict_labels: true
 
@@ -25,36 +26,21 @@ attacks:
     eps: 0.03
     alpha: 0.007
     steps: 20
-  - name: diffusion
-    backend: sd
-    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
-    prompt: "a high quality photo"
-    strength: 0.7
-    guidance_scale: 7.5
-    num_candidates: 5
 
 defenses:
   - name: jpeg
     quality: 75
-  - name: diffusion_purification
-    backend: sd
-    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
-    noise_level: 0.1
-    steps: 50
 
 metrics:
   attack:
     - asr
     - queries
-  quality:
-    - lpips
-    - clip_score
   defense:
     - robust_accuracy
     - clean_accuracy_drop
     - latency
 
 report:
-  output_dir: reports/diffusion_attack_resnet50
+  output_dir: reports/defense_ablation_jpeg
   formats:
     - markdown
