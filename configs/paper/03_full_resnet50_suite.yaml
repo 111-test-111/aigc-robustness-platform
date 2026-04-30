@@ -1,0 +1,68 @@
+# 论文全量套件：传统攻击 + 扩散攻击，轻量防御 + 扩散净化。
+# 该配置成本较高，适合最终补全论文主表时运行。
+task:
+  name: full_resnet50_suite
+  seed: 42
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 50
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+  - name: pgd
+    eps: 0.03
+    alpha: 0.007
+    steps: 20
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 7.5
+    num_candidates: 5
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/full_resnet50_suite
+  formats:
+    - markdown

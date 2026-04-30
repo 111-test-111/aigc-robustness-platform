@@ -207,14 +207,18 @@ class TestHelperFunctions:
 
         configs = _list_experiment_configs()
         names = [c.stem for c in configs]
-        # Should include the numbered experiments
+        # Should include the canonical paper experiments
         assert "01_traditional_attack_baseline" in names
         assert "02_generative_attack_mainline" in names
-        # Should include top-level non-smoke configs
-        assert "baseline_resnet50" in names
-        assert "diffusion_attack_resnet50" in names
+        assert "03_full_resnet50_suite" in names
+        # Should include ablations
+        assert "00_no_defense" in names
+        assert "strength_03" in names
+        assert "steps_10" in names
         # Should NOT include smoke configs
-        assert not any("smoke_" in n for n in names)
+        assert "cpu" not in names
+        assert "synthetic" not in names
+        assert "sd_tiny_e2e" not in names
 
     def test_list_completed_experiments(self) -> None:
         from src.web_ui import _list_completed_experiments

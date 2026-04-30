@@ -1,6 +1,6 @@
-# 防御消融实验 - Diffusion Purification 防御
+# 扩散攻击强度消融：中等强度
 task:
-  name: defense_ablation_diffusion_purification
+  name: diffusion_strength_05
   seed: 42
   device: auto
 
@@ -24,16 +24,11 @@ attacks:
     backend: sd
     generator: stable-diffusion-v1-5/stable-diffusion-v1-5
     prompt: "a high quality photo"
-    strength: 0.7
+    strength: 0.5
     guidance_scale: 7.5
     num_candidates: 5
 
-defenses:
-  - name: diffusion_purification
-    backend: sd
-    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
-    noise_level: 0.1
-    steps: 50
+defenses: []
 
 metrics:
   attack:
@@ -42,12 +37,10 @@ metrics:
   quality:
     - lpips
     - clip_score
-  defense:
-    - robust_accuracy
-    - clean_accuracy_drop
-    - latency
+    - fid
 
 report:
-  output_dir: reports/defense_ablation_diffusion_purification
+  output_dir: reports/diffusion_strength_05
   formats:
     - markdown
+

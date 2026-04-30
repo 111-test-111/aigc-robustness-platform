@@ -36,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIGS_DIR = PROJECT_ROOT / "configs"
-EXPERIMENTS_DIR = CONFIGS_DIR / "experiments"
+PAPER_CONFIGS_DIR = CONFIGS_DIR / "paper"
+ABLATION_CONFIGS_DIR = CONFIGS_DIR / "ablations"
 REPORTS_DIR = PROJECT_ROOT / "reports"
 
 
@@ -45,16 +46,12 @@ REPORTS_DIR = PROJECT_ROOT / "reports"
 # ---------------------------------------------------------------------------
 
 def _list_experiment_configs() -> list[Path]:
-    """Return sorted list of experiment YAML configs."""
-    configs = sorted(EXPERIMENTS_DIR.glob("*.yaml")) + sorted(
-        EXPERIMENTS_DIR.glob("*.yml")
+    """Return sorted list of paper and ablation YAML configs."""
+    configs = sorted(PAPER_CONFIGS_DIR.glob("*.yaml")) + sorted(
+        PAPER_CONFIGS_DIR.glob("*.yml")
     )
-    # Also include top-level configs (baseline, diffusion_attack, smoke_*)
-    for cfg in sorted(CONFIGS_DIR.glob("*.yaml")):
-        if cfg.name.startswith("smoke_"):
-            continue
-        if cfg not in configs:
-            configs.append(cfg)
+    configs.extend(sorted(ABLATION_CONFIGS_DIR.rglob("*.yaml")))
+    configs.extend(sorted(ABLATION_CONFIGS_DIR.rglob("*.yml")))
     return configs
 
 
@@ -338,8 +335,10 @@ def _build_run_experiments_tab() -> None:
     config_map = {c.stem: c for c in configs}
 
     def refresh_configs() -> gr.update:
+        nonlocal config_map
         configs_now = _list_experiment_configs()
         names = [c.stem for c in configs_now]
+        config_map = {c.stem: c for c in configs_now}
         return gr.update(choices=names, value=names[0] if names else None)
 
     def run_single(config_name: str) -> str:
@@ -364,10 +363,10 @@ def _build_run_experiments_tab() -> None:
             return f"Error running experiment: {e}"
 
     def run_all() -> str:
-        """Run all experiments sequentially using run_batch."""
+        """Run the canonical paper suite sequentially using run_batch."""
         try:
             result = subprocess.run(
-                [sys.executable, "-m", "src.cli", "run-batch", str(EXPERIMENTS_DIR)],
+                [sys.executable, "-m", "src.cli", "run-batch", str(PAPER_CONFIGS_DIR)],
                 cwd=str(PROJECT_ROOT),
                 capture_output=True,
                 text=True,
@@ -385,7 +384,7 @@ def _build_run_experiments_tab() -> None:
     with gr.Tab("Run Experiments"):
         gr.Markdown("## Execute Experiment Configurations")
         gr.Markdown(
-            "Select an experiment config to run, or run all experiments in batch mode."
+            "Select a paper or ablation config to run, or run the paper suite in batch mode."
         )
 
         with gr.Row():
@@ -394,7 +393,7 @@ def _build_run_experiments_tab() -> None:
                     choices=config_names,
                     value=config_names[0] if config_names else None,
                     label="Experiment Config",
-                    info="Select from configs/experiments/ and top-level configs",
+                    info="Select from configs/paper/ and configs/ablations/",
                 )
                 refresh_btn = gr.Button("Refresh Config List")
                 with gr.Row():
@@ -402,7 +401,7 @@ def _build_run_experiments_tab() -> None:
                         "Run Selected Experiment", variant="primary"
                     )
                     run_all_btn = gr.Button(
-                        "Run All Experiments", variant="secondary"
+                        "Run Paper Suite", variant="secondary"
                     )
 
             with gr.Column():

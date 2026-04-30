@@ -1,0 +1,55 @@
+# 扩散净化步数消融：10 steps
+task:
+  name: purification_steps_10
+  seed: 42
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 50
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 7.5
+    num_candidates: 5
+
+defenses:
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 10
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/purification_steps_10
+  formats:
+    - markdown
+
