@@ -55,6 +55,12 @@ def _list_experiment_configs() -> list[Path]:
     return configs
 
 
+def _config_display_name(path: Path) -> str:
+    """Return a human-readable display name for a config, relative to configs/."""
+    rel = path.relative_to(CONFIGS_DIR)
+    return str(rel.with_suffix(""))
+
+
 def _list_completed_experiments() -> list[str]:
     """Return names of completed experiment directories."""
     if not REPORTS_DIR.exists():
@@ -331,14 +337,14 @@ def _build_interactive_tab(model_name: str, device: str) -> None:
 def _build_run_experiments_tab() -> None:
     """Build the experiment execution tab."""
     configs = _list_experiment_configs()
-    config_names = [c.stem for c in configs]
-    config_map = {c.stem: c for c in configs}
+    config_names = [_config_display_name(c) for c in configs]
+    config_map = {_config_display_name(c): c for c in configs}
 
     def refresh_configs() -> gr.update:
         nonlocal config_map
         configs_now = _list_experiment_configs()
-        names = [c.stem for c in configs_now]
-        config_map = {c.stem: c for c in configs_now}
+        names = [_config_display_name(c) for c in configs_now]
+        config_map = {_config_display_name(c): c for c in configs_now}
         return gr.update(choices=names, value=names[0] if names else None)
 
     def run_single(config_name: str) -> str:
@@ -393,7 +399,7 @@ def _build_run_experiments_tab() -> None:
                     choices=config_names,
                     value=config_names[0] if config_names else None,
                     label="Experiment Config",
-                    info="Select from configs/paper/ and configs/ablations/",
+                    info="Select a config (paths relative to configs/)",
                 )
                 refresh_btn = gr.Button("Refresh Config List")
                 with gr.Row():

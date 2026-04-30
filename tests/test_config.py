@@ -32,9 +32,9 @@ def test_full_suite_config_loads():
 
 def test_ablation_configs_load():
     paths = [
-        "configs/ablations/defense/00_no_defense.yaml",
-        "configs/ablations/diffusion_strength/strength_03.yaml",
-        "configs/ablations/purification_steps/steps_10.yaml",
+        "configs/ablations/defense/defense_00_no_defense.yaml",
+        "configs/ablations/diffusion_strength/diffusion_strength_03.yaml",
+        "configs/ablations/purification_steps/purification_steps_10.yaml",
     ]
     for path in paths:
         cfg = OmegaConf.load(path)

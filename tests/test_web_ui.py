@@ -203,22 +203,22 @@ class TestHelperFunctions:
         assert "59.0%" in rows[0][1]
 
     def test_list_experiment_configs(self) -> None:
-        from src.web_ui import _list_experiment_configs
+        from src.web_ui import _config_display_name, _list_experiment_configs
 
         configs = _list_experiment_configs()
-        names = [c.stem for c in configs]
+        names = [_config_display_name(c) for c in configs]
         # Should include the canonical paper experiments
-        assert "01_traditional_attack_baseline" in names
-        assert "02_generative_attack_mainline" in names
-        assert "03_full_resnet50_suite" in names
-        # Should include ablations
-        assert "00_no_defense" in names
-        assert "strength_03" in names
-        assert "steps_10" in names
+        assert "paper/01_traditional_attack_baseline" in names
+        assert "paper/02_generative_attack_mainline" in names
+        assert "paper/03_full_resnet50_suite" in names
+        # Should include ablations with descriptive paths
+        assert "ablations/defense/defense_00_no_defense" in names
+        assert "ablations/diffusion_strength/diffusion_strength_03" in names
+        assert "ablations/purification_steps/purification_steps_10" in names
         # Should NOT include smoke configs
-        assert "cpu" not in names
-        assert "synthetic" not in names
-        assert "sd_tiny_e2e" not in names
+        assert "smoke/cpu" not in names
+        assert "smoke/synthetic" not in names
+        assert "smoke/sd_tiny_e2e" not in names
 
     def test_list_completed_experiments(self) -> None:
         from src.web_ui import _list_completed_experiments
