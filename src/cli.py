@@ -307,7 +307,7 @@ def run_batch(
     \b
     并行模式 (--parallel):
       两阶段 VRAM 感知调度，支持多 GPU 亲和性分配：
-      - 阶段 1：SD 扩散类实验，每 GPU 最多 2 进程 (--sd-workers 可覆盖)
+      - 阶段 1：SD 扩散类实验，每 GPU 最多 1 进程 (--sd-workers 可覆盖)
       - 阶段 2：轻量实验，每 GPU 最多 8 进程 (--workers 可覆盖)
       - 进程通过 CUDA_VISIBLE_DEVICES 绑定到指定 GPU，轮询分配
       - OOM 失败的实验会在阶段结束后自动串行重试（独占 GPU 资源）
@@ -321,7 +321,7 @@ def run_batch(
       # 双卡 5090 (推荐)
       python -m src.cli run-batch configs/ --parallel --gpus 0,1
 
-      # 双卡 + 手动调参
+      # 双卡 + 手动调参 (想提高 SD 并发时使用)
       python -m src.cli run-batch configs/ --parallel --gpus 0,1 --sd-workers 4 --workers 20
     """
     if not config_dir.is_dir():
@@ -400,10 +400,11 @@ def _run_batch_parallel(
     """
     num_gpus = len(gpu_list)
 
-    # SD 1.5 + classifier at 512×512 ≈ 10-15 GB peak VRAM.
-    # 2 concurrent per 32 GB GPU is a safe default; 3 may OOM on some configs.
+    # SD 1.5 + classifier at 512×512 ≈ 10-15 GB peak VRAM per process;
+    # heavy configs with attack+defence can spike to 20 GB.
+    # 1 per 32 GB GPU is the safe default; use --sd-workers to override.
     # Light configs (classifier only) ≈ 1-2 GB → 8 per GPU.
-    max_sd_workers = max_sd_workers or (num_gpus * 2)
+    max_sd_workers = max_sd_workers or (num_gpus * 1)
     max_workers = max_workers or (num_gpus * 8)
 
     # Classify configs
