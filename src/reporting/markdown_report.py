@@ -75,10 +75,13 @@ def generate_report(experiment_dir: Path) -> Path:
     )
     template = env.get_template("report.md.j2")
 
+    # Resolve seeds list for display
+    seeds = _resolve_seeds_display(cfg.task)
+
     # Render template
     content = template.render(
         task_name=cfg.task.name,
-        seed=cfg.task.seed,
+        seeds=seeds,
         device=cfg.task.device,
         dataset_name=cfg.dataset.name,
         num_samples=cfg.dataset.num_samples,
@@ -104,25 +107,55 @@ def generate_report(experiment_dir: Path) -> Path:
     return report_path
 
 
+def _resolve_seeds_display(task_cfg) -> list[int]:
+    """Resolve seeds list from config for display in the report."""
+    if "seeds" in task_cfg and task_cfg.seeds is not None:
+        seeds = OmegaConf.to_container(task_cfg.seeds, resolve=True)
+        if isinstance(seeds, list):
+            return [int(s) for s in seeds]
+    if "seed" in task_cfg and task_cfg.seed is not None:
+        return [int(task_cfg.seed)]
+    return [42]
+
+
+def _fmt_mean_std(info: dict, key: str) -> str:
+    """Format a metric value as mean ± std or plain value."""
+    mean_key = f"{key}_mean"
+    std_key = f"{key}_std"
+    if mean_key in info:
+        mean_val = info[mean_key]
+        std_val = info.get(std_key, 0.0)
+        return f"{mean_val:.4f} ± {std_val:.4f}"
+    if key in info and isinstance(info[key], (int, float)):
+        return f"{info[key]:.4f}"
+    return "-"
+
+
 def _generate_conclusions(metrics: dict, cfg) -> list[str]:
-    """Auto-generate conclusion lines from metrics."""
+    """Auto-generate conclusion lines from metrics.
+
+    Handles both raw metric keys (single-seed) and ``_mean`` suffixed
+    variants (multi-seed aggregation).
+    """
     conclusions: list[str] = []
 
-    # Attack effectiveness. Prefer the stricter ASR computed on samples that
-    # the clean model originally classified correctly. Fall back to legacy ASR
-    # only when the stricter metric is unavailable.
-    asr_keys = [k for k in metrics if k.endswith("_asr_on_clean_correct")]
+    asr_keys = [k for k in metrics if k.endswith("_asr_on_clean_correct")
+                or k.endswith("_asr_on_clean_correct_mean")]
     if not asr_keys:
         asr_keys = [
             k
             for k in metrics
-            if k.endswith("_asr")
-            and not k.endswith("_untargeted_asr")
-            and not k.endswith("_targeted_asr")
+            if (k.endswith("_asr") or k.endswith("_asr_mean"))
+            and "_untargeted" not in k
+            and "_targeted" not in k
         ]
     for key in asr_keys:
-        if key.endswith("_asr_on_clean_correct"):
+        if key.endswith("_asr_on_clean_correct_mean"):
+            attack_name = key.removesuffix("_asr_on_clean_correct_mean")
+        elif key.endswith("_asr_on_clean_correct"):
             attack_name = key.removesuffix("_asr_on_clean_correct")
+        elif key.endswith("_asr_mean"):
+            attack_name = key.removesuffix("_asr_mean")
         else:
             attack_name = key.removesuffix("_asr")
         asr = metrics[key]
@@ -134,9 +167,13 @@ def _generate_conclusions(metrics: dict, cfg) -> list[str]:
             conclusions.append(f"{attack_name} 攻击效果有限 (ASR={asr:.2%})")
 
     # Defense effectiveness
-    ra_keys = [k for k in metrics if k.endswith("_robust_accuracy")]
+    ra_keys = [k for k in metrics if k.endswith("_robust_accuracy")
+               or k.endswith("_robust_accuracy_mean")]
     for key in ra_keys:
-        prefix = key.replace("_robust_accuracy", "")
+        if key.endswith("_robust_accuracy_mean"):
+            prefix = key.replace("_robust_accuracy_mean", "")
+        else:
+            prefix = key.replace("_robust_accuracy", "")
         ra = metrics[key]
         if ra > 0.8:
             conclusions.append(f"{prefix} 防御后准确率良好 (RA={ra:.2%})")

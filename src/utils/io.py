@@ -110,7 +110,7 @@ def save_structured_csv(structured_metrics: dict[str, Any], path: Path) -> None:
                 "lpips": _fmt(attack_info.get("lpips")),
                 "fid": _fmt(attack_info.get("fid")),
                 "clip_score": _fmt(attack_info.get("clip_score")),
-                "latency_sec": _fmt(defense_info.get("latency", {}).get("mean")),
+                "latency_sec": _fmt(defense_info.get("latency_mean") or defense_info.get("latency", {}).get("mean")),
                 "backend": metadata.get("actual_backend") or metadata.get("backend") or "",
             })
             wrote_row = True

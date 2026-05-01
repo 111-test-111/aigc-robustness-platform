@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 def test_baseline_config_loads():
     cfg = OmegaConf.load("configs/paper/01_traditional_attack_baseline.yaml")
     assert cfg.task.name == "traditional_attack_baseline"
-    assert cfg.task.seed == 42
+    assert cfg.task.seeds == [42, 123, 456, 789, 1024]
     assert len(cfg.attacks) == 2
     assert len(cfg.defenses) == 3
 

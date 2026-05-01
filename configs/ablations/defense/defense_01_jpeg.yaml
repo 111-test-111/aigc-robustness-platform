@@ -1,14 +1,14 @@
 # 防御消融实验 - JPEG 防御
 task:
   name: defense_ablation_jpeg
-  seed: 42
+  seeds: [42, 123, 456, 789, 1024]
   device: auto
 
 dataset:
   name: imagenet_subset
   root: data/raw/imagenet_subset/images
   manifest: data/raw/imagenet_subset/manifest.csv
-  num_samples: 100
+  num_samples: 500
   image_size: 224
   batch_size: 16
   download: false

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import csv
+import statistics
 from pathlib import Path
 
 import torch
@@ -217,65 +218,25 @@ def _collect_tensor(loader: DataLoader, device: torch.device) -> tuple[torch.Ten
     return torch.cat(all_images).to(device), torch.cat(all_labels).to(device)
 
 
-def run_experiment(config_path: Path) -> Path:
-    """Run a complete experiment from a YAML configuration file.
+def _resolve_seeds(cfg: DictConfig) -> list[int]:
+    """Resolve the list of random seeds from config.
 
-    Pipeline:
-        1. Load and snapshot configuration.
-        2. Set random seeds and resolve compute device.
-        3. Load dataset and target model.
-        4. For each attack: generate adversarial samples, compute attack
-           metrics, then for each defense: apply defense, compute defense
-           metrics.
-        5. Persist all metrics (JSON + CSV) and return the output path.
-
-    Args:
-        config_path: Path to a YAML experiment configuration file.
-
-    Returns:
-        The ``Path`` of the output directory containing all artifacts.
+    Supports both ``task.seeds`` (list) and ``task.seed`` (single int) for
+    backward compatibility. If neither is provided, defaults to ``[42]``.
     """
-    # ------------------------------------------------------------------
-    # 1. Load configuration
-    # ------------------------------------------------------------------
-    cfg: DictConfig = OmegaConf.load(config_path)
-    output_dir = Path(cfg.report.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "samples").mkdir(exist_ok=True)
-    (output_dir / "figures").mkdir(exist_ok=True)
+    if "seeds" in cfg.task and cfg.task.seeds is not None:
+        seeds = OmegaConf.to_container(cfg.task.seeds, resolve=True)
+        if isinstance(seeds, list):
+            return [int(s) for s in seeds]
+    if "seed" in cfg.task and cfg.task.seed is not None:
+        return [int(cfg.task.seed)]
+    return [42]
 
-    # Snapshot the resolved config for reproducibility
-    snapshot_config(cfg, output_dir / "config.yaml")
-    logger.info("Loaded config from %s -> output %s", config_path, output_dir)
 
-    # ------------------------------------------------------------------
-    # 2. Setup seed and device
-    # ------------------------------------------------------------------
-    seed_everything(cfg.task.seed)
-    device = get_device(cfg.task.device)
-    logger.info("Using device: %s", device)
-
-    # ------------------------------------------------------------------
-    # 3. Load data
-    # ------------------------------------------------------------------
-    dataset = _load_dataset(cfg.dataset)
-    loader = DataLoader(dataset, batch_size=cfg.dataset.get("batch_size", 16), shuffle=False)
-    clean, labels = _collect_tensor(loader, device)
-    logger.info("Loaded %d samples", clean.shape[0])
-
-    # ------------------------------------------------------------------
-    # 4. Load target model
-    # ------------------------------------------------------------------
-    model = load_classifier(
-        cfg.target_model.name,
-        cfg.target_model.weights,
-        device,
-    )
-    logger.info("Loaded model: %s (weights=%s)", cfg.target_model.name, cfg.target_model.weights)
-
-    # ------------------------------------------------------------------
-    # 5. Build attack / defense instances
-    # ------------------------------------------------------------------
+def _build_attack_defense_instances(
+    cfg: DictConfig,
+) -> tuple[list[tuple[Attack, dict]], list[tuple[Defense, dict]]]:
+    """Instantiate attack and defense objects from config."""
     attack_methods: list[tuple[Attack, dict]] = []
     for a in cfg.attacks:
         attack_cls = ATTACK_REGISTRY.get(a.name)
@@ -290,19 +251,39 @@ def run_experiment(config_path: Path) -> Path:
             raise ValueError(f"Unknown defense: {d.name}. Available: {list(DEFENSE_REGISTRY)}")
         defense_methods.append((defense_cls(), OmegaConf.to_container(d, resolve=True)))  # type: ignore[arg-type]
 
-    # ------------------------------------------------------------------
-    # 6. Save clean samples
-    # ------------------------------------------------------------------
-    clean_dir = output_dir / "samples" / "clean"
-    clean_dir.mkdir(parents=True, exist_ok=True)
-    _save_sample_pngs(clean, clean_dir, labels)
-    logger.info("Saved %d clean samples to %s", clean.shape[0], clean_dir)
+    return attack_methods, defense_methods
 
-    # ------------------------------------------------------------------
-    # 7. Run attacks and defenses, collect metrics
-    # ------------------------------------------------------------------
+
+def _run_attack_defense_pipeline(
+    cfg: DictConfig,
+    clean: torch.Tensor,
+    labels: torch.Tensor,
+    model: torch.nn.Module,
+    device: torch.device,
+    output_dir: Path,
+    seed: int,
+    save_samples: bool = False,
+) -> tuple[dict[str, float], dict, dict, list[tuple[AttackResult, dict]]]:
+    """Run attack and defense evaluation pipeline for a single random seed.
+
+    Args:
+        cfg: Experiment configuration.
+        clean: Clean images tensor (B, C, H, W) in [0, 1].
+        labels: Ground-truth labels tensor (B,).
+        model: Target classifier model.
+        device: Compute device.
+        output_dir: Artifacts output directory.
+        seed: Random seed for this run.
+        save_samples: If True, save per-attack and per-defense PNG samples.
+
+    Returns:
+        Tuple of (all_metrics, structured_attacks, structured_defenses, attack_results).
+    """
+    seed_everything(seed)
+
+    attack_methods, defense_methods = _build_attack_defense_instances(cfg)
+
     all_metrics: dict[str, float] = {}
-    # Structured metrics for report
     structured_attacks: dict[str, dict] = {}
     structured_defenses: dict[str, dict] = {}
     attack_results: list[tuple[AttackResult, dict]] = []
@@ -310,16 +291,14 @@ def run_experiment(config_path: Path) -> Path:
     for attack, attack_cfg in attack_methods:
         # Text attacks operate on different inputs; skip in image pipeline
         if isinstance(attack, TextAttack):
-            logger.info("Skipping text attack %s in image pipeline", attack.name)
+            logger.info("Skipping text attack %s in image pipeline (seed=%d)", attack.name, seed)
             continue
 
-        logger.info("Running attack: %s", attack.name)
+        logger.info("Running attack: %s (seed=%d)", attack.name, seed)
         result: AttackResult = attack.generate(clean, labels, model, attack_cfg)
         attack_results.append((result, attack_cfg))
 
-        # Attack-level metrics. ``result.success`` is retained as the
-        # implementation-defined attack success mask; for classifier attacks
-        # we also compute stricter, label-aware metrics below.
+        # Attack-level metrics
         result_success_rate = compute_asr(result.success)
         queries = compute_queries(result.queries)
         all_metrics[f"{attack.name}_asr"] = result_success_rate
@@ -348,8 +327,6 @@ def run_experiment(config_path: Path) -> Path:
         if target_class is not None:
             targeted_asr = float((adv_pred == int(target_class)).float().mean().item())
 
-        # Keep the legacy key for compatibility, but make the more precise
-        # metrics available for reporting and paper tables.
         untargeted_asr = asr_on_clean_correct
         all_metrics[f"{attack.name}_clean_accuracy"] = clean_accuracy
         all_metrics[f"{attack.name}_adversarial_accuracy"] = adversarial_accuracy
@@ -393,12 +370,13 @@ def run_experiment(config_path: Path) -> Path:
         structured_attacks[attack.name] = attack_info
 
         # Save adversarial samples
-        adv_dir = output_dir / "samples" / "adversarial" / attack.name
-        adv_dir.mkdir(parents=True, exist_ok=True)
-        _save_sample_pngs(result.adversarial, adv_dir, labels)
+        if save_samples:
+            adv_dir = output_dir / "samples" / "adversarial" / attack.name
+            adv_dir.mkdir(parents=True, exist_ok=True)
+            _save_sample_pngs(result.adversarial, adv_dir, labels)
 
         for defense, defense_cfg in defense_methods:
-            logger.info("  Applying defense: %s", defense.name)
+            logger.info("  Applying defense: %s (seed=%d)", defense.name, seed)
             d_result: DefenseResult = defense.apply(result.adversarial, defense_cfg)
             d_clean_result = defense.apply(clean, defense_cfg)
 
@@ -412,7 +390,6 @@ def run_experiment(config_path: Path) -> Path:
             all_metrics[f"{prefix}_clean_accuracy_drop"] = cad
             all_metrics[f"{prefix}_latency_mean"] = lat["mean"]
 
-            # Clean defended accuracy (defense applied to clean samples)
             clean_defended_acc = compute_robust_accuracy(model, d_clean_result.defended, labels)
             all_metrics[f"{prefix}_clean_defended_accuracy"] = clean_defended_acc
             all_metrics[f"{prefix}_clean_latency_mean"] = clean_lat["mean"]
@@ -421,24 +398,229 @@ def run_experiment(config_path: Path) -> Path:
                 "robust_accuracy": ra,
                 "clean_accuracy_drop": cad,
                 "clean_defended_accuracy": clean_defended_acc,
-                "latency": lat,
-                "clean_latency": clean_lat,
+                "latency_mean": lat["mean"],
+                "latency_median": lat["median"],
+                "latency_max": lat["max"],
+                "clean_latency_mean": clean_lat["mean"],
+                "clean_latency_median": clean_lat["median"],
+                "clean_latency_max": clean_lat["max"],
                 "metadata": d_result.metadata,
                 "clean_metadata": d_clean_result.metadata,
             }
 
             # Save purified samples
-            pur_dir = output_dir / "samples" / "purified" / f"{attack.name}_{defense.name}"
-            pur_dir.mkdir(parents=True, exist_ok=True)
-            _save_sample_pngs(d_result.defended, pur_dir, labels)
+            if save_samples:
+                pur_dir = output_dir / "samples" / "purified" / f"{attack.name}_{defense.name}"
+                pur_dir.mkdir(parents=True, exist_ok=True)
+                _save_sample_pngs(d_result.defended, pur_dir, labels)
+
+    return all_metrics, structured_attacks, structured_defenses, attack_results
+
+
+def _aggregate_metrics(
+    per_seed_metrics: list[dict[str, float]],
+) -> dict[str, float]:
+    """Compute mean and std across per-seed metric dicts.
+
+    Returns a flat dict with ``_mean`` and ``_std`` suffixes for each metric
+    key that appeared in at least one seed.
+    """
+    if not per_seed_metrics:
+        return {}
+
+    all_keys: list[str] = []
+    seen: set[str] = set()
+    for m in per_seed_metrics:
+        for k in m:
+            if k not in seen:
+                all_keys.append(k)
+                seen.add(k)
+
+    aggregated: dict[str, float] = {}
+    for key in all_keys:
+        values = [m[key] for m in per_seed_metrics if key in m]
+        if len(values) >= 2:
+            aggregated[f"{key}_mean"] = float(statistics.mean(values))
+            aggregated[f"{key}_std"] = float(statistics.stdev(values))
+        elif len(values) == 1:
+            aggregated[f"{key}_mean"] = float(values[0])
+            aggregated[f"{key}_std"] = 0.0
+
+    return aggregated
+
+
+def _aggregate_structured(
+    per_seed_structured: list[dict],
+    section: str,
+) -> dict[str, dict]:
+    """Aggregate structured attack or defense metrics across seeds.
+
+    Returns a dict mapping attack/defense key to a dict of ``{metric: {mean, std}}``.
+    """
+    if not per_seed_structured:
+        return {}
+
+    # Collect all keys and their metric names
+    all_keys: list[str] = []
+    seen_keys: set[str] = set()
+    metric_sets: dict[str, set[str]] = {}
+    for s in per_seed_structured:
+        section_data = s.get(section, {})
+        for key, info in section_data.items():
+            if key not in seen_keys:
+                all_keys.append(key)
+                seen_keys.add(key)
+                metric_sets[key] = set()
+            for mk in info:
+                if isinstance(info[mk], (int, float)):
+                    metric_sets[key].add(mk)
+
+    aggregated: dict[str, dict] = {}
+    for key in all_keys:
+        entry: dict = {}
+        for mk in sorted(metric_sets.get(key, set())):
+            values = []
+            for s in per_seed_structured:
+                section_data = s.get(section, {})
+                info = section_data.get(key, {})
+                if mk in info and isinstance(info[mk], (int, float)):
+                    values.append(float(info[mk]))
+            if len(values) >= 2:
+                entry[f"{mk}_mean"] = float(statistics.mean(values))
+                entry[f"{mk}_std"] = float(statistics.stdev(values))
+            elif len(values) == 1:
+                entry[f"{mk}_mean"] = float(values[0])
+                entry[f"{mk}_std"] = 0.0
+
+        # Preserve non-numeric fields from first seed (e.g. queries dict, metadata)
+        first = per_seed_structured[0].get(section, {}).get(key, {})
+        for mk, mv in first.items():
+            if not isinstance(mv, (int, float)):
+                entry[mk] = mv
+
+        aggregated[key] = entry
+
+    return aggregated
+
+
+def run_experiment(config_path: Path) -> Path:
+    """Run a complete experiment from a YAML configuration file.
+
+    Supports both single-seed (``task.seed``) and multi-seed (``task.seeds``)
+    configurations. When multiple seeds are provided, the pipeline is executed
+    once per seed and metrics are aggregated with mean and standard deviation.
+
+    Pipeline:
+        1. Load and snapshot configuration.
+        2. Resolve seeds list.
+        3. Load dataset and target model (shared across seeds).
+        4. For each seed: run attack/defense pipeline.
+        5. Aggregate metrics (mean ± std) across seeds.
+        6. Generate charts and persist all artifacts.
+
+    Args:
+        config_path: Path to a YAML experiment configuration file.
+
+    Returns:
+        The ``Path`` of the output directory containing all artifacts.
+    """
+    # ------------------------------------------------------------------
+    # 1. Load configuration
+    # ------------------------------------------------------------------
+    cfg: DictConfig = OmegaConf.load(config_path)
+    output_dir = Path(cfg.report.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "samples").mkdir(exist_ok=True)
+    (output_dir / "figures").mkdir(exist_ok=True)
+
+    seeds = _resolve_seeds(cfg)
+    logger.info("Loaded config from %s -> output %s (seeds=%s)", config_path, output_dir, seeds)
+
+    # Snapshot the resolved config (store seeds list for reproducibility)
+    snapshot_config(cfg, output_dir / "config.yaml")
+
+    # ------------------------------------------------------------------
+    # 2. Resolve device
+    # ------------------------------------------------------------------
+    device = get_device(cfg.task.device)
+    logger.info("Using device: %s", device)
+
+    # ------------------------------------------------------------------
+    # 3. Load data (shared across seeds — deterministic subset)
+    # ------------------------------------------------------------------
+    dataset = _load_dataset(cfg.dataset)
+    loader = DataLoader(dataset, batch_size=cfg.dataset.get("batch_size", 16), shuffle=False)
+    clean, labels = _collect_tensor(loader, device)
+    logger.info("Loaded %d samples", clean.shape[0])
+
+    # ------------------------------------------------------------------
+    # 4. Load target model (shared across seeds)
+    # ------------------------------------------------------------------
+    model = load_classifier(
+        cfg.target_model.name,
+        cfg.target_model.weights,
+        device,
+    )
+    logger.info("Loaded model: %s (weights=%s)", cfg.target_model.name, cfg.target_model.weights)
+
+    # ------------------------------------------------------------------
+    # 5. Save clean samples (once)
+    # ------------------------------------------------------------------
+    clean_dir = output_dir / "samples" / "clean"
+    clean_dir.mkdir(parents=True, exist_ok=True)
+    _save_sample_pngs(clean, clean_dir, labels)
+    logger.info("Saved %d clean samples to %s", clean.shape[0], clean_dir)
+
+    # ------------------------------------------------------------------
+    # 6. Run attack/defense pipeline per seed
+    # ------------------------------------------------------------------
+    per_seed_metrics: list[dict[str, float]] = []
+    per_seed_attacks: list[dict] = []
+    per_seed_defenses: list[dict] = []
+    first_seed_attack_results: list[tuple[AttackResult, dict]] = []
+
+    for i, seed in enumerate(seeds):
+        is_first = (i == 0)
+        metrics, s_attacks, s_defenses, atk_results = _run_attack_defense_pipeline(
+            cfg=cfg,
+            clean=clean,
+            labels=labels,
+            model=model,
+            device=device,
+            output_dir=output_dir,
+            seed=seed,
+            save_samples=is_first,
+        )
+        per_seed_metrics.append(metrics)
+        per_seed_attacks.append({"attacks": s_attacks})
+        per_seed_defenses.append({"defenses": s_defenses})
+        if is_first:
+            first_seed_attack_results = atk_results
+        logger.info("Completed seed %d (%d/%d)", seed, i + 1, len(seeds))
+
+    # ------------------------------------------------------------------
+    # 7. Aggregate metrics across seeds
+    # ------------------------------------------------------------------
+    aggregated_metrics = _aggregate_metrics(per_seed_metrics)
+    aggregated_attacks = _aggregate_structured(per_seed_attacks, "attacks")
+    aggregated_defenses = _aggregate_structured(per_seed_defenses, "defenses")
+
+    # Also produce a flat dict with legacy-style keys (backward compat for
+    # report generation and single-seed use). For single seed, use raw values
+    # without _mean suffix. For multi-seed, keep both.
+    if len(seeds) == 1:
+        flat_metrics = per_seed_metrics[0]
+    else:
+        flat_metrics = dict(aggregated_metrics)
 
     # ------------------------------------------------------------------
     # 8. Generate charts
     # ------------------------------------------------------------------
-    if attack_results:
-        first_result, _ = attack_results[0]
+    if first_seed_attack_results:
+        first_result, _ = first_seed_attack_results[0]
 
-        # Sample grid
+        # Sample grid (from first seed)
+        attack_methods, defense_methods = _build_attack_defense_instances(cfg)
         defended_sample = None
         if defense_methods:
             first_defense, first_defense_cfg = defense_methods[0]
@@ -454,27 +636,42 @@ def run_experiment(config_path: Path) -> Path:
         )
         logger.info("Saved sample grid to %s", grid_path)
 
-        # Metric bars chart
+        # Metric bars chart (from aggregated metrics, with error bars if multi-seed)
+        attack_methods, _ = _build_attack_defense_instances(cfg)
         if len(attack_methods) > 1:
             bar_metrics_list = []
+            bar_stds_list = []
             bar_labels = []
+            has_any_std = False
             for atk, _ in attack_methods:
                 if isinstance(atk, TextAttack):
                     continue
-                atk_metrics = {
-                    "clean_acc": all_metrics.get(f"{atk.name}_clean_accuracy", 0.0),
-                    "adv_acc": all_metrics.get(f"{atk.name}_adversarial_accuracy", 0.0),
-                    "asr_clean_correct": all_metrics.get(
-                        f"{atk.name}_asr_on_clean_correct", 0.0
-                    ),
-                    "pred_change": all_metrics.get(
-                        f"{atk.name}_prediction_change_rate", 0.0
-                    ),
-                }
-                if f"{atk.name}_clip_score" in all_metrics:
-                    atk_metrics["clip_score"] = all_metrics[f"{atk.name}_clip_score"]
+                atk_metrics = {}
+                atk_stds = {}
+                for mk in ["clean_accuracy", "adversarial_accuracy",
+                           "asr_on_clean_correct", "prediction_change_rate"]:
+                    key = f"{atk.name}_{mk}"
+                    if len(seeds) == 1:
+                        atk_metrics[mk] = flat_metrics.get(key, 0.0)
+                    else:
+                        atk_metrics[mk] = flat_metrics.get(f"{key}_mean", 0.0)
+                        std_val = flat_metrics.get(f"{key}_std", 0.0)
+                        if std_val > 0:
+                            atk_stds[mk] = std_val
+                            has_any_std = True
+                if f"{atk.name}_clip_score" in flat_metrics or f"{atk.name}_clip_score_mean" in flat_metrics:
+                    cs_key = f"{atk.name}_clip_score"
+                    if len(seeds) == 1:
+                        atk_metrics["clip_score"] = flat_metrics.get(cs_key, 0.0)
+                    else:
+                        atk_metrics["clip_score"] = flat_metrics.get(f"{cs_key}_mean", 0.0)
+                        std_val = flat_metrics.get(f"{cs_key}_std", 0.0)
+                        if std_val > 0:
+                            atk_stds["clip_score"] = std_val
+                            has_any_std = True
                 if atk_metrics:
                     bar_metrics_list.append(atk_metrics)
+                    bar_stds_list.append(atk_stds if has_any_std else None)
                     bar_labels.append(atk.name)
             if bar_metrics_list:
                 bars_path = output_dir / "figures" / "metric_bars.png"
@@ -483,10 +680,11 @@ def run_experiment(config_path: Path) -> Path:
                     bar_labels,
                     save_path=bars_path,
                     title="Attack Method Comparison",
+                    stds_list=bar_stds_list if has_any_std else None,
                 )
 
-        # Radar chart for first attack
-        radar_metrics = _build_radar_metrics(all_metrics)
+        # Radar chart (from aggregated metrics)
+        radar_metrics = _build_radar_metrics(flat_metrics)
         if radar_metrics:
             radar_path = output_dir / "figures" / "radar.png"
             generate_radar(
@@ -498,17 +696,24 @@ def run_experiment(config_path: Path) -> Path:
     # ------------------------------------------------------------------
     # 9. Persist metrics
     # ------------------------------------------------------------------
-    # Save structured metrics separately for the report
-    structured_metrics = {
-        "attacks": structured_attacks,
-        "defenses": structured_defenses,
-    }
-    save_json(structured_metrics, output_dir / "structured_metrics.json")
-    save_structured_csv(structured_metrics, output_dir / "metrics_wide.csv")
+    # Save per-seed metrics for transparency
+    per_seed_data = {}
+    for seed, metrics in zip(seeds, per_seed_metrics):
+        per_seed_data[str(seed)] = metrics
+    save_json(per_seed_data, output_dir / "per_seed_metrics.json")
 
-    save_json(all_metrics, output_dir / "metrics.json")
-    save_csv(all_metrics, output_dir / "metrics.csv")
-    logger.info("Saved metrics to %s", output_dir)
+    # Save aggregated structured metrics
+    aggregated_structured = {
+        "attacks": aggregated_attacks,
+        "defenses": aggregated_defenses,
+    }
+    save_json(aggregated_structured, output_dir / "structured_metrics.json")
+    save_structured_csv(aggregated_structured, output_dir / "metrics_wide.csv")
+
+    # Save flat aggregated metrics
+    save_json(flat_metrics, output_dir / "metrics.json")
+    save_csv(flat_metrics, output_dir / "metrics.csv")
+    logger.info("Saved metrics to %s (seeds=%d)", output_dir, len(seeds))
 
     # ------------------------------------------------------------------
     # 10. Generate report
@@ -547,62 +752,63 @@ def _build_radar_metrics(metrics: dict[str, float]) -> dict[str, float]:
     Raw metrics have mixed semantics: ASR and LPIPS are better when lower,
     while robust accuracy and CLIP score are better when higher. This helper
     converts them into comparable [0, 1] dimensions for visualization.
+
+    Handles both single-seed keys (e.g. ``fgsm_asr_on_clean_correct``) and
+    multi-seed aggregated keys (e.g. ``fgsm_asr_on_clean_correct_mean``).
     """
     if not metrics:
         return {}
 
+    def _is_value(k: str, suffix: str) -> bool:
+        """Match single-seed (k.endswith(suffix)) or multi-seed mean
+        (k.endswith(suffix + '_mean')) keys, excluding std keys."""
+        return (k.endswith(suffix) or k.endswith(suffix + "_mean")) and not k.endswith("_std")
+
     radar: dict[str, float] = {}
 
     asr_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_asr_on_clean_correct") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_asr_on_clean_correct") and isinstance(v, (int, float))
     ]
     if not asr_values:
         asr_values = [
-            float(v)
-            for k, v in metrics.items()
-            if k.endswith("_untargeted_asr") and isinstance(v, (int, float))
+            float(v) for k, v in metrics.items()
+            if _is_value(k, "_untargeted_asr") and isinstance(v, (int, float))
         ]
     if asr_values:
         radar["attack_resistance"] = _clamp01(1.0 - max(asr_values))
 
     robust_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_robust_accuracy") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_robust_accuracy") and isinstance(v, (int, float))
     ]
     if robust_values:
         radar["robust_accuracy"] = _clamp01(max(robust_values))
 
     drop_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_clean_accuracy_drop") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_clean_accuracy_drop") and isinstance(v, (int, float))
     ]
     if drop_values:
         radar["clean_retention"] = _clamp01(1.0 - max(drop_values))
 
     lpips_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_lpips") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_lpips") and isinstance(v, (int, float))
     ]
     if lpips_values:
         radar["perceptual_similarity"] = _clamp01(1.0 - min(lpips_values))
 
     clip_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_clip_score") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_clip_score") and isinstance(v, (int, float))
     ]
     if clip_values:
         radar["semantic_alignment"] = _clamp01(max(clip_values))
 
     latency_values = [
-        float(v)
-        for k, v in metrics.items()
-        if k.endswith("_latency_mean") and isinstance(v, (int, float))
+        float(v) for k, v in metrics.items()
+        if _is_value(k, "_latency_mean") and isinstance(v, (int, float))
     ]
     if latency_values:
         radar["efficiency"] = _clamp01(1.0 - min(latency_values) / 10.0)

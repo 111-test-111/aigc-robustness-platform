@@ -99,6 +99,7 @@ def generate_metric_bars(
     labels: list[str],
     save_path: Path | str = "metric_bars.png",
     title: str = "Metric Comparison",
+    stds_list: list[dict] | None = None,
 ) -> Path:
     """Generate grouped bar chart comparing metrics across methods.
 
@@ -107,6 +108,7 @@ def generate_metric_bars(
         labels: label for each method.
         save_path: output file path.
         title: figure title.
+        stds_list: optional list of dicts with standard deviations for error bars.
 
     Returns:
         Path to saved figure.
@@ -126,7 +128,11 @@ def generate_metric_bars(
 
     for i, (metrics, label) in enumerate(zip(metrics_list, labels)):
         values = [metrics.get(m, 0) for m in metric_names]
-        ax.bar(x + i * width, values, width, label=label)
+        stds = None
+        if stds_list and i < len(stds_list) and stds_list[i]:
+            stds = [stds_list[i].get(m, 0) for m in metric_names]
+        ax.bar(x + i * width, values, width, label=label,
+               yerr=stds, capsize=3, error_kw={"linewidth": 1})
 
     ax.set_xticks(x + width * (len(metrics_list) - 1) / 2)
     ax.set_xticklabels(metric_names, rotation=45, ha="right")

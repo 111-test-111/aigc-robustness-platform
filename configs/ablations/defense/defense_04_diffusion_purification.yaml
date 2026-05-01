@@ -1,14 +1,14 @@
 # 防御消融实验 - Diffusion Purification 防御
 task:
   name: defense_ablation_diffusion_purification
-  seed: 42
+  seeds: [42, 123, 456, 789, 1024]
   device: auto
 
 dataset:
   name: imagenet_subset
   root: data/raw/imagenet_subset/images
   manifest: data/raw/imagenet_subset/manifest.csv
-  num_samples: 50
+  num_samples: 200
   image_size: 512
   batch_size: 4
   download: false

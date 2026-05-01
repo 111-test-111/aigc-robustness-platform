@@ -89,11 +89,17 @@ def compute_robustness_score(
 
 
 def _suffix_best(metrics: dict[str, float], suffix: str, reducer, default):
-    """Return a reduced value for numeric metrics ending with *suffix*."""
+    """Return a reduced value for numeric metrics ending with *suffix*.
+
+    Also matches multi-seed aggregated keys (``suffix + '_mean'``) while
+    excluding ``_std`` variants.
+    """
     values = [
         float(v)
         for k, v in metrics.items()
-        if k.endswith(suffix) and isinstance(v, (int, float))
+        if isinstance(v, (int, float))
+        and not k.endswith("_std")
+        and (k.endswith(suffix) or k.endswith(suffix + "_mean"))
     ]
     if not values:
         return default

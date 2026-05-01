@@ -1,3 +1,25 @@
+{% macro fmt(info, key, pct=False) -%}
+{%- set mean_key = key ~ '_mean' -%}
+{%- if info[mean_key] is defined -%}
+{%- set std_key = key ~ '_std' -%}
+{%- set m = info[mean_key] -%}
+{%- set s = info[std_key] | default(0.0) -%}
+{%- if pct -%}
+{{ "%.2f"|format(m * 100) }} ± {{ "%.2f"|format(s * 100) }}%
+{%- else -%}
+{{ "%.4f"|format(m) }} ± {{ "%.4f"|format(s) }}
+{%- endif -%}
+{%- elif info[key] is defined and info[key] is number -%}
+{%- if pct -%}
+{{ "%.2f"|format(info[key] * 100) }}%
+{%- else -%}
+{{ "%.4f"|format(info[key]) }}
+{%- endif -%}
+{%- else -%}
+-
+{%- endif -%}
+{%- endmacro %}
+
 # 实验报告: {{ task_name }}
 
 > 自动生成于 {{ timestamp }}
@@ -7,12 +29,16 @@
 | 项目 | 值 |
 |------|-----|
 | 任务名称 | {{ task_name }} |
-| 随机种子 | {{ seed }} |
+| 随机种子 | {{ seeds | join(', ') }} (n={{ seeds | length }}) |
 | 设备 | {{ device }} |
 | 数据集 | {{ dataset_name }} |
 | 样本数 | {{ num_samples }} |
 | 图像尺寸 | {{ image_size }} |
 | 目标模型 | {{ model_name }} ({{ model_weights }}) |
+
+{% if seeds | length > 1 %}
+> **多种子可靠性**: 本实验使用 {{ seeds | length }} 个随机种子独立运行，指标以 均值 ± 标准差 报告。
+{% endif %}
 
 ### 攻击方法
 
@@ -36,11 +62,11 @@
 | 攻击方法 | 成功率 | 干净正确样本 ASR | 预测变化率 | 干净准确率 | 对抗准确率 | LPIPS | CLIP Score | FID |
 |----------|--------|----------------|------------|-----------|-----------|-------|-----------|-----|
 {% for name, info in structured_attacks.items() -%}
-| {{ name }} | {{ "%.2f"|format(info.asr * 100) }}% | {{ "%.2f"|format(info.asr_on_clean_correct * 100) }}% | {{ "%.2f"|format(info.prediction_change_rate * 100) }}% | {{ "%.2f"|format(info.clean_accuracy * 100) }}% | {{ "%.2f"|format(info.adversarial_accuracy * 100) }}% | {{ "%.4f"|format(info.lpips) if info.lpips is defined else "-" }} | {{ "%.4f"|format(info.clip_score) if info.clip_score is defined else "-" }} | {{ "%.2f"|format(info.fid) if info.fid is defined else "-" }} |
+| {{ name }} | {{ fmt(info, 'asr', pct=True) }} | {{ fmt(info, 'asr_on_clean_correct', pct=True) }} | {{ fmt(info, 'prediction_change_rate', pct=True) }} | {{ fmt(info, 'clean_accuracy', pct=True) }} | {{ fmt(info, 'adversarial_accuracy', pct=True) }} | {{ fmt(info, 'lpips') }} | {{ fmt(info, 'clip_score') }} | {{ fmt(info, 'fid') }} |
 {% endfor %}
 {% else %}
 {% for key, value in metrics.items() %}
-{% if key.endswith('_asr') %}
+{% if key.endswith('_asr') or key.endswith('_asr_mean') %}
 - **{{ key }}**: {{ "%.4f"|format(value) }}
 {% endif %}
 {% endfor %}
@@ -52,7 +78,7 @@
 | 攻击-防御 | 鲁棒准确率 | 干净准确率下降 | 干净防御准确率 | 延迟 (s) | 实际后端 |
 |-----------|-----------|---------------|---------------|----------|----------|
 {% for name, info in structured_defenses.items() -%}
-| {{ name }} | {{ "%.2f"|format(info.robust_accuracy * 100) }}% | {{ "%.2f"|format(info.clean_accuracy_drop * 100) }}% | {{ "%.2f"|format(info.clean_defended_accuracy * 100) }}% | {{ "%.4f"|format(info.latency.mean) }} | {{ info.metadata.actual_backend if info.metadata.actual_backend is defined else info.metadata.backend if info.metadata.backend is defined else "-" }} |
+| {{ name }} | {{ fmt(info, 'robust_accuracy', pct=True) }} | {{ fmt(info, 'clean_accuracy_drop', pct=True) }} | {{ fmt(info, 'clean_defended_accuracy', pct=True) }} | {{ fmt(info, 'latency_mean') }} | {{ info.metadata.actual_backend if info.metadata.actual_backend is defined else info.metadata.backend if info.metadata.backend is defined else "-" }} |
 {% endfor %}
 {% endif %}
 

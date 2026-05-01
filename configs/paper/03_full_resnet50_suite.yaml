@@ -2,14 +2,14 @@
 # 该配置成本较高，适合最终补全论文主表时运行。
 task:
   name: full_resnet50_suite
-  seed: 42
+  seeds: [42, 123, 456, 789, 1024]
   device: auto
 
 dataset:
   name: imagenet_subset
   root: data/raw/imagenet_subset/images
   manifest: data/raw/imagenet_subset/manifest.csv
-  num_samples: 50
+  num_samples: 200
   image_size: 512
   batch_size: 4
   download: false
