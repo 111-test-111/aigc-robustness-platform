@@ -83,6 +83,8 @@ class DiffusionPurificationDefense(Defense):
                 defended = self._denoise_simple(noisy, steps)
                 actual_backend = "gaussian_blur_fallback"
 
+        if batch.device.type == "cuda":
+            torch.cuda.synchronize()
         latency = time.perf_counter() - start
 
         return DefenseResult(

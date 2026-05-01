@@ -92,6 +92,8 @@ class AdvGANAttack(Attack):
             adv_pred = target_model(adv).argmax(dim=1)
             success = orig_pred != adv_pred
 
+        if batch.device.type == "cuda":
+            torch.cuda.synchronize()
         elapsed = time.monotonic() - start
 
         return AttackResult(

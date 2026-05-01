@@ -63,6 +63,8 @@ class DiffusionAttack(Attack):
             batch, all_candidates, target_model, target_class, num_candidates
         )
 
+        if batch.device.type == "cuda":
+            torch.cuda.synchronize()
         elapsed = time.perf_counter() - start
 
         return AttackResult(

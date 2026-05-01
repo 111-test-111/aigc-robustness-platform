@@ -29,6 +29,8 @@ class GaussianBlurDefense(Defense):
         start = time.perf_counter()
         blur = TVGaussianBlur(kernel_size=kernel_size, sigma=sigma)
         defended = blur(batch)
+        if batch.device.type == "cuda":
+            torch.cuda.synchronize()
         latency = time.perf_counter() - start
 
         return DefenseResult(

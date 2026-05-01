@@ -1,6 +1,6 @@
-# 防御消融实验 - Bit Depth 防御
+# PGD 迭代步数消融：基线步数
 task:
-  name: defense_ablation_bit_depth
+  name: pgd_steps_20
   seeds: [42, 123, 456, 789, 1024]
   device: auto
 
@@ -20,16 +20,12 @@ target_model:
   weights: imagenet
 
 attacks:
-  - name: fgsm
-    eps: 0.03
   - name: pgd
     eps: 0.03
     alpha: 0.007
     steps: 20
 
-defenses:
-  - name: bit_depth
-    bits: 4
+defenses: []
 
 metrics:
   attack:
@@ -38,9 +34,8 @@ metrics:
   defense:
     - robust_accuracy
     - clean_accuracy_drop
-    - latency
 
 report:
-  output_dir: reports/defense_ablation_bit_depth
+  output_dir: reports/pgd_steps_20
   formats:
     - markdown

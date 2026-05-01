@@ -1,0 +1,39 @@
+# FGSM eps 消融：强扰动
+task:
+  name: fgsm_eps_015
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 500
+  image_size: 224
+  batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.15
+
+defenses: []
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+
+report:
+  output_dir: reports/fgsm_eps_015
+  formats:
+    - markdown

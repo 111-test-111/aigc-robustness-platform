@@ -1,6 +1,6 @@
-# 防御消融实验 - Diffusion Purification 防御
+# 扩散攻击 num_candidates 消融：多候选数
 task:
-  name: defense_ablation_diffusion_purification
+  name: diffusion_candidates_10
   seeds: [42, 123, 456, 789, 1024]
   device: auto
 
@@ -26,14 +26,9 @@ attacks:
     prompt: "a high quality photo"
     strength: 0.7
     guidance_scale: 7.5
-    num_candidates: 5
+    num_candidates: 10
 
-defenses:
-  - name: diffusion_purification
-    backend: sd
-    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
-    noise_level: 0.1
-    steps: 50
+defenses: []
 
 metrics:
   attack:
@@ -43,12 +38,8 @@ metrics:
     - lpips
     - clip_score
     - fid
-  defense:
-    - robust_accuracy
-    - clean_accuracy_drop
-    - latency
 
 report:
-  output_dir: reports/defense_ablation_diffusion_purification
+  output_dir: reports/diffusion_candidates_10
   formats:
     - markdown

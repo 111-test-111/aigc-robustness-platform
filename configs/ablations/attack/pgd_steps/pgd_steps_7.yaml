@@ -1,6 +1,6 @@
-# 防御消融实验 - Gaussian Blur 防御
+# PGD 迭代步数消融：少步数
 task:
-  name: defense_ablation_blur
+  name: pgd_steps_7
   seeds: [42, 123, 456, 789, 1024]
   device: auto
 
@@ -20,17 +20,12 @@ target_model:
   weights: imagenet
 
 attacks:
-  - name: fgsm
-    eps: 0.03
   - name: pgd
     eps: 0.03
-    alpha: 0.007
-    steps: 20
+    alpha: 0.01
+    steps: 7
 
-defenses:
-  - name: gaussian_blur
-    kernel_size: 5
-    sigma: 1.0
+defenses: []
 
 metrics:
   attack:
@@ -39,9 +34,8 @@ metrics:
   defense:
     - robust_accuracy
     - clean_accuracy_drop
-    - latency
 
 report:
-  output_dir: reports/defense_ablation_blur
+  output_dir: reports/pgd_steps_7
   formats:
     - markdown

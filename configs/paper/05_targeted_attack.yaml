@@ -1,0 +1,67 @@
+# 定向攻击 vs 非定向攻击对比实验
+# DiffusionAttack 支持 target_class 参数进行定向攻击
+task:
+  name: targeted_attack
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  # 非定向：只要预测改变就算成功
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 7.5
+    num_candidates: 5
+  # 定向：对抗样本必须被分类为指定的 target_class
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 7.5
+    num_candidates: 5
+    target_class: 0
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/targeted_attack
+  formats:
+    - markdown

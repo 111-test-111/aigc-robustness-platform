@@ -110,8 +110,8 @@ def save_structured_csv(structured_metrics: dict[str, Any], path: Path) -> None:
                 "lpips": _fmt(attack_info.get("lpips")),
                 "fid": _fmt(attack_info.get("fid")),
                 "clip_score": _fmt(attack_info.get("clip_score")),
-                "latency_sec": _fmt(defense_info.get("latency_mean") or defense_info.get("latency", {}).get("mean")),
-                "backend": metadata.get("actual_backend") or metadata.get("backend") or "",
+                "latency_sec": _fmt(_nvl(defense_info.get("latency_mean"), (defense_info.get("latency") or {}).get("mean"))),
+                "backend": _nvl(metadata.get("actual_backend"), metadata.get("backend")) or "",
             })
             wrote_row = True
 
@@ -134,6 +134,18 @@ def save_structured_csv(structured_metrics: dict[str, Any], path: Path) -> None:
                     "latency_sec": "",
                     "backend": "",
                 })
+
+
+def _nvl(*values: Any) -> Any:
+    """Return the first value that is not None (null-value coalesce).
+
+    Unlike ``a or b``, this treats ``0.0``, ``False``, and empty strings as
+    valid values — only ``None`` triggers fallthrough.
+    """
+    for v in values:
+        if v is not None:
+            return v
+    return None
 
 
 def _split_defense_key(key: str) -> tuple[str, str]:

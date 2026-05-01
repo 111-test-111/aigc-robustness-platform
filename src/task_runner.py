@@ -721,6 +721,12 @@ def run_experiment(config_path: Path) -> Path:
     report_path = generate_report(output_dir)
     logger.info("Generated report: %s", report_path)
 
+    # ------------------------------------------------------------------
+    # 11. Release GPU memory before worker is reused (prevents fragmentation)
+    # ------------------------------------------------------------------
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
     return output_dir
 
 

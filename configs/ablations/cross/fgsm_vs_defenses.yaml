@@ -1,0 +1,47 @@
+# 攻击×防御 交互矩阵：FGSM vs 全部防御
+task:
+  name: fgsm_vs_defenses
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 500
+  image_size: 224
+  batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/fgsm_vs_defenses
+  formats:
+    - markdown

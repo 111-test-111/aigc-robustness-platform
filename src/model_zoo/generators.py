@@ -76,10 +76,3 @@ def load_sd_pipeline(
     logger.info("Cached SD pipeline for %s", cache_key)
 
     return pipe
-
-
-def clear_pipeline_cache() -> None:
-    """Clear the pipeline cache to free memory."""
-    global _PIPELINE_CACHE
-    _PIPELINE_CACHE.clear()
-    logger.info("Cleared SD pipeline cache")

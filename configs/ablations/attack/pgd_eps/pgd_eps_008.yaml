@@ -1,0 +1,41 @@
+# PGD eps 消融：中等扰动
+task:
+  name: pgd_eps_008
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 500
+  image_size: 224
+  batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: pgd
+    eps: 0.08
+    alpha: 0.02
+    steps: 20
+
+defenses: []
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+
+report:
+  output_dir: reports/pgd_eps_008
+  formats:
+    - markdown

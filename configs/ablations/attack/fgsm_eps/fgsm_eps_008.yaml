@@ -1,6 +1,6 @@
-# 防御消融实验 - JPEG 防御
+# FGSM eps 消融：中等扰动
 task:
-  name: defense_ablation_jpeg
+  name: fgsm_eps_008
   seeds: [42, 123, 456, 789, 1024]
   device: auto
 
@@ -21,15 +21,9 @@ target_model:
 
 attacks:
   - name: fgsm
-    eps: 0.03
-  - name: pgd
-    eps: 0.03
-    alpha: 0.007
-    steps: 20
+    eps: 0.08
 
-defenses:
-  - name: jpeg
-    quality: 75
+defenses: []
 
 metrics:
   attack:
@@ -38,9 +32,8 @@ metrics:
   defense:
     - robust_accuracy
     - clean_accuracy_drop
-    - latency
 
 report:
-  output_dir: reports/defense_ablation_jpeg
+  output_dir: reports/fgsm_eps_008
   formats:
     - markdown

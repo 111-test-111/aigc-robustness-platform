@@ -1,0 +1,45 @@
+# 扩散攻击 guidance_scale 消融：高引导强度
+task:
+  name: diffusion_guidance_150
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 15.0
+    num_candidates: 5
+
+defenses: []
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+
+report:
+  output_dir: reports/diffusion_guidance_150
+  formats:
+    - markdown

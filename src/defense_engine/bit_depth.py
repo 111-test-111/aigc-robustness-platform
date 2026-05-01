@@ -28,6 +28,8 @@ class BitDepthDefense(Defense):
         start = time.perf_counter()
         defended = torch.round(batch * (levels - 1)) / (levels - 1)
         defended = torch.clamp(defended, 0, 1)
+        if batch.device.type == "cuda":
+            torch.cuda.synchronize()
         latency = time.perf_counter() - start
 
         return DefenseResult(

@@ -1,0 +1,47 @@
+# Gaussian Blur 消融：小核小sigma
+task:
+  name: blur_k3_s05
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 500
+  image_size: 224
+  batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+  - name: pgd
+    eps: 0.03
+    alpha: 0.007
+    steps: 20
+
+defenses:
+  - name: gaussian_blur
+    kernel_size: 3
+    sigma: 0.5
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/blur_k3_s05
+  formats:
+    - markdown

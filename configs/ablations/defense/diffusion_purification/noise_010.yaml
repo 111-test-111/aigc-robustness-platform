@@ -1,0 +1,54 @@
+# 扩散净化 noise_level 消融：基线噪声
+task:
+  name: purification_noise_010
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: diffusion
+    backend: sd
+    generator: stable-diffusion-v1-5/stable-diffusion-v1-5
+    prompt: "a high quality photo"
+    strength: 0.7
+    guidance_scale: 7.5
+    num_candidates: 5
+
+defenses:
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/purification_noise_010
+  formats:
+    - markdown

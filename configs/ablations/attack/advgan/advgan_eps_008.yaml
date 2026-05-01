@@ -1,0 +1,41 @@
+# AdvGAN 攻击消融：强扰动
+task:
+  name: advgan_eps_008
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 500
+  image_size: 224
+  batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: advgan
+    eps: 0.08
+    epochs: 50
+    lr: 0.001
+
+defenses: []
+
+metrics:
+  attack:
+    - asr
+    - queries
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+
+report:
+  output_dir: reports/advgan_eps_008
+  formats:
+    - markdown
