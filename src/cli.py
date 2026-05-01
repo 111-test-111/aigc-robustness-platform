@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import atexit
 import concurrent.futures
 import json
 import logging
 import multiprocessing
+import os
+import signal
+import subprocess
 import time
 from pathlib import Path
 
@@ -11,6 +15,118 @@ import typer
 
 app = typer.Typer(help="AIGC 无限制对抗样本攻防验证平台")
 logger = logging.getLogger(__name__)
+
+
+# ======================================================================
+# Signal handling — graceful shutdown on Ctrl+C
+# ======================================================================
+
+# Tracks every ProcessPoolExecutor created in this session so the SIGINT
+# handler can shut them all down immediately, even if the interrupt
+# arrives while the main loop is blocked in as_completed().
+_active_pools: list[concurrent.futures.ProcessPoolExecutor] = []
+_sigint_count = 0
+
+
+def _register_pool(pool: concurrent.futures.ProcessPoolExecutor) -> None:
+    _active_pools.append(pool)
+
+
+def _unregister_pool(pool: concurrent.futures.ProcessPoolExecutor) -> None:
+    try:
+        _active_pools.remove(pool)
+    except ValueError:
+        pass
+
+
+def _kill_orphan_workers() -> None:
+    """SIGKILL any Python child processes whose command line mentions
+    ``run_experiment`` and whose parent is this process.
+
+    Called after pool shutdown to guarantee no GPU-leaking zombies.
+    """
+    current_pid = os.getpid()
+    try:
+        result = subprocess.run(
+            ["pgrep", "-P", str(current_pid), "-f", "run_experiment"],
+            capture_output=True, text=True, timeout=5,
+        )
+        for line in result.stdout.strip().splitlines():
+            if not line:
+                continue
+            pid = int(line.strip())
+            try:
+                os.kill(pid, signal.SIGKILL)
+                logger.info("Killed orphan worker PID %d", pid)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        pass
+
+
+def _force_cleanup() -> None:
+    """Shutdown every tracked pool and kill any surviving workers.
+
+    Registered with :func:`atexit` so even an unexpected fatal exit
+    (e.g. unhandled exception) triggers cleanup.
+    """
+    for pool in list(_active_pools):
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    _active_pools.clear()
+    _kill_orphan_workers()
+
+
+atexit.register(_force_cleanup)
+
+
+def _handle_sigint(signum: int, _frame: object) -> None:
+    """First Ctrl+C → graceful shutdown.  Second → immediate ``os._exit``.
+
+    Shuts down all tracked pools, kills orphaned workers, then raises
+    ``KeyboardInterrupt`` so the normal ``finally`` blocks unwind the
+    stack cleanly.
+    """
+    global _sigint_count
+    _sigint_count += 1
+
+    if _sigint_count >= 2:
+        logger.warning("Second interrupt — forcing immediate exit")
+        os._exit(1)
+
+    logger.warning(
+        "Interrupt received, shutting down worker pools… "
+        "(press Ctrl+C again to force-exit)"
+    )
+
+    # Shut down every pool we know about *now*, before KeyboardInterrupt
+    # propagates.  This keeps worker teardown as orderly as possible.
+    for pool in list(_active_pools):
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    _active_pools.clear()
+
+    # Brief grace period for workers to exit on their own.
+    time.sleep(0.3)
+
+    # Anything still alive gets SIGKILL.
+    _kill_orphan_workers()
+
+    raise KeyboardInterrupt
+
+
+def _install_signal_handlers() -> None:
+    """Wire SIGINT and SIGTERM to our graceful-shutdown handler."""
+    signal.signal(signal.SIGINT, _handle_sigint)
+    signal.signal(signal.SIGTERM, _handle_sigint)
+
+
+# Install handlers at import time so they are active for every CLI command.
+_install_signal_handlers()
 
 
 # ======================================================================
@@ -26,9 +142,23 @@ def _setup_cuda_env() -> None:
     which dramatically reduces OOMs from fragmentation when multiple
     workers share a GPU.
     """
-    import os
-
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+
+def _empty_device_cache() -> None:
+    """Release cached GPU memory across all available backends.
+
+    Must be called **after** ``import torch`` (otherwise backends aren't
+    loaded yet and the calls are no-ops).  Safe to call unconditionally;
+    ``is_available`` guards each backend.
+    """
+    import torch
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    mps = getattr(torch, "mps", None)
+    if mps is not None and mps.is_available():
+        mps.empty_cache()
 
 
 def _run_one_experiment(config_path: str) -> str:
@@ -45,10 +175,7 @@ def _run_one_experiment(config_path: str) -> str:
         result = run_experiment(Path(config_path))
         return str(result)
     finally:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        _empty_device_cache()
 
 
 def _run_one_experiment_gpu(config_path: str, gpu_id: int) -> str:
@@ -63,8 +190,6 @@ def _run_one_experiment_gpu(config_path: str, gpu_id: int) -> str:
     stays consistent even when the worker process is reused for
     multiple tasks.
     """
-    import os
-
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
     _setup_cuda_env()
 
@@ -76,10 +201,7 @@ def _run_one_experiment_gpu(config_path: str, gpu_id: int) -> str:
         result = run_experiment(Path(config_path))
         return str(result)
     finally:
-        import torch
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        _empty_device_cache()
 
 
 def _is_sd_config(config_path: Path) -> bool:
@@ -185,6 +307,7 @@ def run_batch(
       - 阶段 2：轻量实验，每 GPU 最多 8 进程 (--workers 可覆盖)
       - 进程通过 CUDA_VISIBLE_DEVICES 绑定到指定 GPU，轮询分配
       - OOM 失败的实验会在阶段结束后自动串行重试（独占 GPU 资源）
+      - Ctrl+C 优雅终止：第一次中断立即关闭所有 worker 池并清理残留进程
 
     \b
     示例:
@@ -300,33 +423,39 @@ def _run_batch_parallel(
     t0 = time.monotonic()
     oom_retry: list[Path] = []
 
-    # --- Phase 1: SD-heavy ---------------------------------------------------
-    if sd_configs:
-        actual_workers = min(max_sd_workers, len(sd_configs))
-        typer.echo(
-            f"── Phase 1: SD-heavy ({len(sd_configs)} configs, "
-            f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
-        )
-        oom = _run_parallel_phase(
-            sd_configs, max_sd_workers, ctx, report_dirs, errors, gpu_list
-        )
-        oom_retry.extend(oom)
+    try:
+        # --- Phase 1: SD-heavy -----------------------------------------------
+        if sd_configs:
+            actual_workers = min(max_sd_workers, len(sd_configs))
+            typer.echo(
+                f"── Phase 1: SD-heavy ({len(sd_configs)} configs, "
+                f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
+            )
+            oom = _run_parallel_phase(
+                sd_configs, max_sd_workers, ctx, report_dirs, errors, gpu_list
+            )
+            oom_retry.extend(oom)
 
-    # --- Phase 2: Light ------------------------------------------------------
-    if light_configs:
-        actual_workers = min(max_workers, len(light_configs))
-        typer.echo(
-            f"── Phase 2: Light ({len(light_configs)} configs, "
-            f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
-        )
-        oom = _run_parallel_phase(
-            light_configs, max_workers, ctx, report_dirs, errors, gpu_list
-        )
-        oom_retry.extend(oom)
+        # --- Phase 2: Light --------------------------------------------------
+        if light_configs:
+            actual_workers = min(max_workers, len(light_configs))
+            typer.echo(
+                f"── Phase 2: Light ({len(light_configs)} configs, "
+                f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
+            )
+            oom = _run_parallel_phase(
+                light_configs, max_workers, ctx, report_dirs, errors, gpu_list
+            )
+            oom_retry.extend(oom)
 
-    # --- Retry: OOM failures, one at a time ----------------------------------
-    if oom_retry:
-        _retry_oom_configs(oom_retry, ctx, report_dirs, errors, gpu_list)
+        # --- Retry: OOM failures, one at a time ------------------------------
+        if oom_retry:
+            _retry_oom_configs(oom_retry, ctx, report_dirs, errors, gpu_list)
+
+    except KeyboardInterrupt:
+        typer.echo("\nBatch run interrupted by user.")
+        # Pools are already shut down by the signal handler + finally blocks.
+        # Still generate a partial comparison report with what we have.
 
     total_elapsed = time.monotonic() - t0
     _report_batch_summary(report_dirs, errors, total_elapsed, output_dir)
@@ -378,6 +507,7 @@ def _run_parallel_phase(
             max_workers=workers_per_gpu,
             mp_context=mp_context,
         )
+        _register_pool(pool)
         pools.append((pool, gpu_id))
 
     try:
@@ -405,8 +535,6 @@ def _run_parallel_phase(
                     f"  [{completed}/{total}] CRASH  {cfg_path.stem}  "
                     f"(GPU {gpu_id} pool dead)"
                 )
-                # Don't raise — other GPU pools may still be healthy.
-                # Mark remaining futures for this GPU as failed.
                 for f, (p, g) in list(futures.items()):
                     if g == gpu_id and not f.done():
                         errors.append((p.stem, f"Skipped (GPU {gpu_id} pool dead)"))
@@ -422,7 +550,11 @@ def _run_parallel_phase(
                     oom_configs.append(cfg_path)
     finally:
         for pool, _ in pools:
-            pool.shutdown(wait=False, cancel_futures=True)
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            _unregister_pool(pool)
 
     return oom_configs
 
@@ -443,10 +575,12 @@ def _run_parallel_phase_single_gpu(
     total = len(configs)
     oom_configs: list[Path] = []
 
-    with concurrent.futures.ProcessPoolExecutor(
+    pool = concurrent.futures.ProcessPoolExecutor(
         max_workers=workers,
         mp_context=mp_context,
-    ) as pool:
+    )
+    _register_pool(pool)
+    try:
         futures: dict[concurrent.futures.Future, Path] = {}
         for cfg_path in configs:
             future = pool.submit(_run_one_experiment, str(cfg_path))
@@ -470,6 +604,12 @@ def _run_parallel_phase_single_gpu(
                 typer.echo(f"  [{completed}/{total}] FAIL  {cfg_path.stem}: {exc}")
                 if _is_oom_error(exc):
                     oom_configs.append(cfg_path)
+    finally:
+        try:
+            pool.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+        _unregister_pool(pool)
 
     return oom_configs
 
@@ -494,9 +634,11 @@ def _retry_oom_configs(
 
         # Fresh pool per retry guarantees a clean CUDA context even when
         # the GPU assignment changes between retries.
-        with concurrent.futures.ProcessPoolExecutor(
+        pool = concurrent.futures.ProcessPoolExecutor(
             max_workers=1, mp_context=mp_context
-        ) as pool:
+        )
+        _register_pool(pool)
+        try:
             future = pool.submit(_run_one_experiment_gpu, str(cfg_path), gpu_id)
             try:
                 result_path = future.result()
@@ -505,12 +647,17 @@ def _retry_oom_configs(
                     f"  [{i}/{len(configs)}] OK  {cfg_path.stem}  "
                     f"(GPU {gpu_id}, retry)"
                 )
-                # Remove from error list
                 _remove_error(errors, cfg_path.stem)
             except Exception as exc:
                 typer.echo(
                     f"  [{i}/{len(configs)}] STILL-FAIL  {cfg_path.stem}: {exc}"
                 )
+        finally:
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            _unregister_pool(pool)
 
 
 def _remove_error(errors: list[tuple[str, str]], name: str) -> None:
