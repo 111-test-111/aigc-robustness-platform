@@ -726,7 +726,7 @@ def create_app(model_name: str = "resnet50", device: str = "auto") -> gr.Blocks:
 
     Args:
         model_name: Name of the classifier to load from the model zoo.
-        device: Device string for inference (e.g. "auto", "mps", "cuda", or "cpu").
+        device: Device string for inference (e.g. "auto", "cuda", or "cpu").
 
     Returns:
         A gr.Blocks instance with the full UI.

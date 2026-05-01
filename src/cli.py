@@ -146,19 +146,15 @@ def _setup_cuda_env() -> None:
 
 
 def _empty_device_cache() -> None:
-    """Release cached GPU memory across all available backends.
+    """Release cached CUDA memory after an experiment finishes.
 
-    Must be called **after** ``import torch`` (otherwise backends aren't
-    loaded yet and the calls are no-ops).  Safe to call unconditionally;
-    ``is_available`` guards each backend.
+    Must be called **after** ``import torch`` (otherwise the CUDA backend
+    isn't loaded yet and the call is a no-op).
     """
     import torch
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
-    mps = getattr(torch, "mps", None)
-    if mps is not None and mps.is_available():
-        mps.empty_cache()
 
 
 def _run_one_experiment(config_path: str) -> str:

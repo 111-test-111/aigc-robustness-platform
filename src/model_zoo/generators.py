@@ -47,7 +47,7 @@ def load_sd_pipeline(
             "diffusers is required. Install with: pip install diffusers"
         )
 
-    if device.type in ("cpu", "mps") and torch_dtype == torch.float16:
+    if device.type == "cpu" and torch_dtype == torch.float16:
         logger.warning(
             "float16 SD pipeline on %s; switching to float32 for numerical stability",
             device.type,

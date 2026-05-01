@@ -726,10 +726,6 @@ def run_experiment(config_path: Path) -> Path:
     # ------------------------------------------------------------------
     if device.type == "cuda":
         torch.cuda.empty_cache()
-    elif device.type == "mps":
-        mps = getattr(torch, "mps", None)
-        if mps is not None:
-            mps.empty_cache()
 
     return output_dir
 
