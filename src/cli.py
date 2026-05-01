@@ -18,12 +18,27 @@ logger = logging.getLogger(__name__)
 # ======================================================================
 
 
+def _setup_cuda_env() -> None:
+    """Reduce CUDA memory fragmentation before torch is imported.
+
+    ``expandable_segments:True`` lets PyTorch return cached memory to the
+    CUDA allocator in variable-sized chunks instead of fixed 2 MiB blocks,
+    which dramatically reduces OOMs from fragmentation when multiple
+    workers share a GPU.
+    """
+    import os
+
+    os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
+
 def _run_one_experiment(config_path: str) -> str:
     """Run a single experiment from a YAML config path in a worker process.
 
     Returns the output directory path as a string (must be pickle-safe).
     Uses whichever GPU is visible by default (CUDA_VISIBLE_DEVICES).
     """
+    _setup_cuda_env()
+
     from src.task_runner import run_experiment
 
     try:
@@ -51,6 +66,7 @@ def _run_one_experiment_gpu(config_path: str, gpu_id: int) -> str:
     import os
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    _setup_cuda_env()
 
     from src.task_runner import run_experiment
 
@@ -109,6 +125,12 @@ def _is_sd_config(config_path: Path) -> bool:
     return False
 
 
+def _is_oom_error(exc: Exception) -> bool:
+    """Return True if the exception is a CUDA out-of-memory error."""
+    msg = str(exc).lower()
+    return "out of memory" in msg
+
+
 # ======================================================================
 # CLI Commands
 # ======================================================================
@@ -159,9 +181,10 @@ def run_batch(
     \b
     并行模式 (--parallel):
       两阶段 VRAM 感知调度，支持多 GPU 亲和性分配：
-      - 阶段 1：SD 扩散类实验，每 GPU 最多 3 进程 (--sd-workers 可覆盖)
+      - 阶段 1：SD 扩散类实验，每 GPU 最多 2 进程 (--sd-workers 可覆盖)
       - 阶段 2：轻量实验，每 GPU 最多 8 进程 (--workers 可覆盖)
       - 进程通过 CUDA_VISIBLE_DEVICES 绑定到指定 GPU，轮询分配
+      - OOM 失败的实验会在阶段结束后自动串行重试（独占 GPU 资源）
 
     \b
     示例:
@@ -172,7 +195,7 @@ def run_batch(
       python -m src.cli run-batch configs/ --parallel --gpus 0,1
 
       # 双卡 + 手动调参
-      python -m src.cli run-batch configs/ --parallel --gpus 0,1 --sd-workers 8 --workers 20
+      python -m src.cli run-batch configs/ --parallel --gpus 0,1 --sd-workers 4 --workers 20
     """
     if not config_dir.is_dir():
         typer.echo(f"目录不存在: {config_dir}")
@@ -227,7 +250,7 @@ def _run_batch_sequential(
 
 
 # ======================================================================
-# Parallel runner (two-phase VRAM-aware scheduling)
+# Parallel runner (two-phase VRAM-aware scheduling + OOM retry)
 # ======================================================================
 
 
@@ -242,6 +265,7 @@ def _run_batch_parallel(
 
     Phase 1 — SD-heavy configs with limited concurrency.
     Phase 2 — Light configs with full concurrency.
+    Retry  — OOM failures are retried sequentially with dedicated GPUs.
 
     Workers are pinned to GPUs via ``CUDA_VISIBLE_DEVICES`` in round-robin
     order.  Each phase uses a fresh ProcessPoolExecutor so failed workers
@@ -249,10 +273,10 @@ def _run_batch_parallel(
     """
     num_gpus = len(gpu_list)
 
-    # Sensible defaults that scale with GPU count.
-    # SD 1.5 + classifier ≈ 7-9 GB VRAM → 3 per 32 GB GPU is safe.
+    # SD 1.5 + classifier at 512×512 ≈ 10-15 GB peak VRAM.
+    # 2 concurrent per 32 GB GPU is a safe default; 3 may OOM on some configs.
     # Light configs (classifier only) ≈ 1-2 GB → 8 per GPU.
-    max_sd_workers = max_sd_workers or (num_gpus * 3)
+    max_sd_workers = max_sd_workers or (num_gpus * 2)
     max_workers = max_workers or (num_gpus * 8)
 
     # Classify configs
@@ -274,6 +298,7 @@ def _run_batch_parallel(
     ctx = multiprocessing.get_context("spawn")
 
     t0 = time.monotonic()
+    oom_retry: list[Path] = []
 
     # --- Phase 1: SD-heavy ---------------------------------------------------
     if sd_configs:
@@ -282,9 +307,10 @@ def _run_batch_parallel(
             f"── Phase 1: SD-heavy ({len(sd_configs)} configs, "
             f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
         )
-        _run_parallel_phase(
+        oom = _run_parallel_phase(
             sd_configs, max_sd_workers, ctx, report_dirs, errors, gpu_list
         )
+        oom_retry.extend(oom)
 
     # --- Phase 2: Light ------------------------------------------------------
     if light_configs:
@@ -293,9 +319,14 @@ def _run_batch_parallel(
             f"── Phase 2: Light ({len(light_configs)} configs, "
             f"{actual_workers} workers on {num_gpus} GPU(s)) ──"
         )
-        _run_parallel_phase(
+        oom = _run_parallel_phase(
             light_configs, max_workers, ctx, report_dirs, errors, gpu_list
         )
+        oom_retry.extend(oom)
+
+    # --- Retry: OOM failures, one at a time ----------------------------------
+    if oom_retry:
+        _retry_oom_configs(oom_retry, ctx, report_dirs, errors, gpu_list)
 
     total_elapsed = time.monotonic() - t0
     _report_batch_summary(report_dirs, errors, total_elapsed, output_dir)
@@ -308,7 +339,7 @@ def _run_parallel_phase(
     report_dirs: list[Path],
     errors: list[tuple[str, str]],
     gpu_list: list[int],
-) -> None:
+) -> list[Path]:
     """Execute a batch of configs in parallel with per-GPU process pools.
 
     **Why per-GPU pools (not one pool with round-robin GPU assignment):**
@@ -324,17 +355,20 @@ def _run_parallel_phase(
 
     Crash isolation: if one GPU's pool dies (OOM, driver crash), the
     error is logged and remaining GPUs continue unaffected.
+
+    Returns:
+        List of config paths that failed with OOM (for retry).
     """
     num_gpus = len(gpu_list)
     workers_per_gpu = max(total_workers // num_gpus, 1)
     total = len(configs)
+    oom_configs: list[Path] = []
 
     # Single-GPU path: no env-var dance needed.
     if num_gpus == 1:
-        _run_parallel_phase_single_gpu(
+        return _run_parallel_phase_single_gpu(
             configs, total_workers, mp_context, report_dirs, errors
         )
-        return
 
     # Multi-GPU path: one pool per GPU.
     # Build pools first, then distribute configs round-robin.
@@ -376,15 +410,21 @@ def _run_parallel_phase(
                 for f, (p, g) in list(futures.items()):
                     if g == gpu_id and not f.done():
                         errors.append((p.stem, f"Skipped (GPU {gpu_id} pool dead)"))
+                        oom_configs.append(p)
                         futures.pop(f, None)
             except Exception as exc:
-                errors.append((cfg_path.stem, str(exc)))
+                msg = str(exc)
+                errors.append((cfg_path.stem, msg))
                 typer.echo(
                     f"  [{completed}/{total}] FAIL  {cfg_path.stem}: {exc}"
                 )
+                if _is_oom_error(exc):
+                    oom_configs.append(cfg_path)
     finally:
         for pool, _ in pools:
             pool.shutdown(wait=False, cancel_futures=True)
+
+    return oom_configs
 
 
 def _run_parallel_phase_single_gpu(
@@ -393,10 +433,15 @@ def _run_parallel_phase_single_gpu(
     mp_context,
     report_dirs: list[Path],
     errors: list[tuple[str, str]],
-) -> None:
-    """Single-GPU fast path — no GPU pinning needed."""
+) -> list[Path]:
+    """Single-GPU fast path — no GPU pinning needed.
+
+    Returns:
+        List of config paths that failed with OOM (for retry).
+    """
     workers = min(workers, len(configs))
     total = len(configs)
+    oom_configs: list[Path] = []
 
     with concurrent.futures.ProcessPoolExecutor(
         max_workers=workers,
@@ -420,8 +465,60 @@ def _run_parallel_phase_single_gpu(
                 typer.echo(f"  [{completed}/{total}] CRASH  {cfg_path.stem}")
                 raise
             except Exception as exc:
-                errors.append((cfg_path.stem, str(exc)))
+                msg = str(exc)
+                errors.append((cfg_path.stem, msg))
                 typer.echo(f"  [{completed}/{total}] FAIL  {cfg_path.stem}: {exc}")
+                if _is_oom_error(exc):
+                    oom_configs.append(cfg_path)
+
+    return oom_configs
+
+
+def _retry_oom_configs(
+    configs: list[Path],
+    mp_context,
+    report_dirs: list[Path],
+    errors: list[tuple[str, str]],
+    gpu_list: list[int],
+) -> None:
+    """Retry OOM-failed configs sequentially with a dedicated GPU each.
+
+    Each retry runs in a fresh spawned process so the GPU starts clean.
+    Successful retries are removed from the error list.
+    """
+    num_gpus = len(gpu_list)
+    typer.echo(f"\n── OOM Retry ({len(configs)} configs, sequential) ──")
+
+    for i, cfg_path in enumerate(configs, 1):
+        gpu_id = gpu_list[i % num_gpus]
+
+        # Fresh pool per retry guarantees a clean CUDA context even when
+        # the GPU assignment changes between retries.
+        with concurrent.futures.ProcessPoolExecutor(
+            max_workers=1, mp_context=mp_context
+        ) as pool:
+            future = pool.submit(_run_one_experiment_gpu, str(cfg_path), gpu_id)
+            try:
+                result_path = future.result()
+                report_dirs.append(Path(result_path))
+                typer.echo(
+                    f"  [{i}/{len(configs)}] OK  {cfg_path.stem}  "
+                    f"(GPU {gpu_id}, retry)"
+                )
+                # Remove from error list
+                _remove_error(errors, cfg_path.stem)
+            except Exception as exc:
+                typer.echo(
+                    f"  [{i}/{len(configs)}] STILL-FAIL  {cfg_path.stem}: {exc}"
+                )
+
+
+def _remove_error(errors: list[tuple[str, str]], name: str) -> None:
+    """Remove the first error entry matching *name* in-place."""
+    for j, (n, _msg) in enumerate(errors):
+        if n == name:
+            errors.pop(j)
+            return
 
 
 # ======================================================================
