@@ -134,14 +134,20 @@ _install_signal_handlers()
 # ======================================================================
 
 
-def _setup_cuda_env() -> None:
-    """Reduce CUDA memory fragmentation before torch is imported.
+def _setup_worker_env() -> None:
+    """Configure environment before importing torch in a worker process.
 
-    ``expandable_segments:True`` lets PyTorch return cached memory to the
-    CUDA allocator in variable-sized chunks instead of fixed 2 MiB blocks,
-    which dramatically reduces OOMs from fragmentation when multiple
-    workers share a GPU.
+    - Suppress known deprecation warnings from transformers / huggingface_hub
+      that are emitted during Stable Diffusion pipeline loading.
+    - Enable CUDA expandable memory segments to reduce fragmentation OOMs.
     """
+    import warnings
+
+    # transformers: Siglip2ImageProcessorFast → Siglip2ImageProcessor
+    warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+    # huggingface_hub: local_dir_use_symlinks is deprecated and ignored
+    warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 
@@ -163,7 +169,7 @@ def _run_one_experiment(config_path: str) -> str:
     Returns the output directory path as a string (must be pickle-safe).
     Uses whichever GPU is visible by default (CUDA_VISIBLE_DEVICES).
     """
-    _setup_cuda_env()
+    _setup_worker_env()
 
     from src.task_runner import run_experiment
 
@@ -187,7 +193,7 @@ def _run_one_experiment_gpu(config_path: str, gpu_id: int) -> str:
     multiple tasks.
     """
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    _setup_cuda_env()
+    _setup_worker_env()
 
     from src.task_runner import run_experiment
 
