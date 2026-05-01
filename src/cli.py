@@ -147,6 +147,8 @@ def _setup_worker_env() -> None:
     warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
     # huggingface_hub: local_dir_use_symlinks is deprecated and ignored
     warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
+    # torchvision: lpips uses deprecated pretrained=True for AlexNet
+    warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
