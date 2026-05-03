@@ -161,12 +161,13 @@ def test_collect_prewarm_requirements(tmp_path):
     config_path = tmp_path / "config.yaml"
     OmegaConf.save(cfg, config_path)
 
-    classifiers, sd_pipelines, needs_fid, needs_clip = (
+    classifiers, sd_pipelines, needs_lpips, needs_fid, needs_clip = (
         _collect_prewarm_requirements([Path(config_path)])
     )
 
     assert classifiers == {"resnet50"}
     assert sd_pipelines == {"stable-diffusion-v1-5/stable-diffusion-v1-5"}
+    assert needs_lpips
     assert needs_fid
     assert needs_clip
 
@@ -186,12 +187,13 @@ def test_collect_prewarm_requirements_ignores_lightweight_config(tmp_path):
     config_path = tmp_path / "light.yaml"
     OmegaConf.save(cfg, config_path)
 
-    classifiers, sd_pipelines, needs_fid, needs_clip = (
+    classifiers, sd_pipelines, needs_lpips, needs_fid, needs_clip = (
         _collect_prewarm_requirements([config_path])
     )
 
     assert classifiers == set()
     assert sd_pipelines == set()
+    assert not needs_lpips
     assert not needs_fid
     assert not needs_clip
 

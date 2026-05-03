@@ -273,10 +273,11 @@ def _uses_sd_backend(item: dict[str, Any], default_sd_name: str) -> bool:
 
 def _collect_prewarm_requirements(
     configs: list[Path],
-) -> tuple[set[str], set[str], bool, bool]:
+) -> tuple[set[str], set[str], bool, bool, bool]:
     """Collect classifiers, SD pipelines, and quality models needed by configs."""
     classifiers: set[str] = set()
     sd_pipelines: set[str] = set()
+    needs_lpips = False
     needs_fid = False
     needs_clip = False
 
@@ -314,10 +315,21 @@ def _collect_prewarm_requirements(
         metrics = cfg.get("metrics", {})
         quality = metrics.get("quality", []) if isinstance(metrics, dict) else []
         if isinstance(quality, list):
+            needs_lpips = needs_lpips or "lpips" in quality
             needs_fid = needs_fid or "fid" in quality
             needs_clip = needs_clip or "clip_score" in quality
 
-    return classifiers, sd_pipelines, needs_fid, needs_clip
+    return classifiers, sd_pipelines, needs_lpips, needs_fid, needs_clip
+
+
+def _prewarm_lpips_weights() -> None:
+    """Download and verify LPIPS AlexNet weights used by quality metrics."""
+    import torch
+
+    from src.evaluation.quality_metrics import compute_lpips
+
+    img = torch.zeros(1, 3, 64, 64)
+    compute_lpips(img, img)
 
 
 def _prewarm_fid_weights() -> None:
@@ -368,11 +380,17 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     typer.echo(f"── 模型预热 (device={device}) ──")
 
-    classifiers, sd_pipelines, needs_fid, needs_clip = (
+    classifiers, sd_pipelines, needs_lpips, needs_fid, needs_clip = (
         _collect_prewarm_requirements(configs)
     )
 
-    if not classifiers and not sd_pipelines and not needs_fid and not needs_clip:
+    if (
+        not classifiers
+        and not sd_pipelines
+        and not needs_lpips
+        and not needs_fid
+        and not needs_clip
+    ):
         typer.echo("  No models to prewarm.")
         return
 
@@ -413,6 +431,16 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
             except Exception as exc:
                 failures.append(f"SD pipeline {model_id}: {exc}")
                 typer.echo(f"    FAIL ({exc})")
+
+    # Warm LPIPS weights -------------------------------------------------
+    if needs_lpips:
+        typer.echo("  Loading LPIPS model: alex ... ", nl=False)
+        try:
+            _prewarm_lpips_weights()
+            typer.echo("OK")
+        except Exception as exc:
+            failures.append(f"LPIPS alex: {exc}")
+            typer.echo(f"FAIL ({exc})")
 
     # Warm FID inception weights (torchmetrics delegates to torch-fidelity) ---
     if needs_fid:
@@ -1095,7 +1123,7 @@ def prewarm(
 
     在并行运行实验前使用，避免多进程同时触发下载导致冲突。
     扫描 *config_dir* 中所有 YAML 文件，提取引用的分类器、
-    Stable Diffusion pipeline、FID Inception 权重和 CLIP 模型，
+    Stable Diffusion pipeline、LPIPS、FID Inception 权重和 CLIP 模型，
     逐一加载后释放。
 
     \b
