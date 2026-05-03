@@ -257,6 +257,110 @@ def _is_oom_error(exc: Exception) -> bool:
     return "out of memory" in msg
 
 
+def _prewarm_from_configs(configs: list[Path]) -> None:
+    """Download & cache all models referenced by *configs* sequentially.
+
+    Must be called **before** spawning worker processes so that concurrent
+    workers find the models already on disk instead of racing to download
+    them (which causes duplicate downloads, file-lock conflicts, and
+    slow startup in parallel mode).
+    """
+    import torch
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    typer.echo(f"── 模型预热 (device={device}) ──")
+
+    # Collect unique models from configs ---------------------------------
+    classifiers: set[str] = set()
+    sd_pipelines: set[str] = set()
+    has_quality_metrics = False
+
+    for cfg_path in configs:
+        try:
+            from omegaconf import OmegaConf
+            cfg = OmegaConf.load(cfg_path)
+        except Exception:
+            continue
+
+        # Classifiers
+        tm = cfg.get("target_model", {})
+        if tm.get("weights") not in (None, "none"):
+            classifiers.add(tm.get("name", "resnet50"))
+
+        # SD pipelines (attack)
+        for atk in cfg.get("attacks", []):
+            gen = atk.get("generator", "")
+            if gen and gen != "mock":
+                sd_pipelines.add(gen)
+
+        # SD pipelines (defense)
+        for dfn in cfg.get("defenses", []):
+            mid = dfn.get("model_id", "")
+            if mid and mid != "mock":
+                sd_pipelines.add(mid)
+
+        # Quality metrics
+        quality = cfg.get("metrics", {}).get("quality", [])
+        if "clip_score" in quality or "fid" in quality:
+            has_quality_metrics = True
+
+    if not classifiers and not sd_pipelines and not has_quality_metrics:
+        typer.echo("  No models to prewarm.")
+        return
+
+    # Warm classifiers ---------------------------------------------------
+    if classifiers:
+        from src.model_zoo.classifiers import load_classifier
+
+        for name in sorted(classifiers):
+            typer.echo(f"  Loading classifier: {name} ... ", nl=False)
+            try:
+                model = load_classifier(name, "imagenet", device)
+                del model
+                typer.echo("OK")
+            except Exception as exc:
+                typer.echo(f"SKIP ({exc})")
+
+    # Warm SD pipelines --------------------------------------------------
+    if sd_pipelines:
+        from src.model_zoo.generators import _PIPELINE_CACHE
+
+        for model_id in sorted(sd_pipelines):
+            typer.echo(f"  Loading SD pipeline: {model_id} ... ", nl=False)
+            try:
+                from diffusers import AutoPipelineForImage2Image
+
+                pipe = AutoPipelineForImage2Image.from_pretrained(
+                    model_id,
+                    torch_dtype=torch.float32,
+                    safety_checker=None,
+                    requires_safety_checker=False,
+                )
+                del pipe
+                _PIPELINE_CACHE.clear()
+                typer.echo("OK")
+            except Exception as exc:
+                typer.echo(f"SKIP ({exc})")
+
+    # Warm CLIP (used by quality metrics) --------------------------------
+    if has_quality_metrics:
+        typer.echo("  Loading CLIP model: openai/clip-vit-base-patch16 ... ", nl=False)
+        try:
+            from transformers import CLIPModel, CLIPProcessor
+
+            clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+            clip_proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+            del clip_model, clip_proc
+            typer.echo("OK")
+        except Exception as exc:
+            typer.echo(f"SKIP ({exc})")
+
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+
+    typer.echo("── 预热完成 ──\n")
+
+
 # ======================================================================
 # CLI Commands
 # ======================================================================
@@ -296,6 +400,11 @@ def run_batch(
         "--gpus",
         help="并行模式使用的 GPU 编号，逗号分隔 (例: '0,1')。每 GPU 独立分配进程",
     ),
+    no_prewarm: bool = typer.Option(
+        False,
+        "--no-prewarm",
+        help="跳过模型预热 (默认在并行模式下自动预热)",
+    ),
 ) -> None:
     """批量运行目录中的所有实验并生成对比报告。
 
@@ -307,11 +416,13 @@ def run_batch(
     \b
     并行模式 (--parallel):
       两阶段 VRAM 感知调度，支持多 GPU 亲和性分配：
+      - 默认自动预热：并行前顺序加载所有模型到本地缓存，避免并发下载冲突
       - 阶段 1：SD 扩散类实验，每 GPU 最多 1 进程 (--sd-workers 可覆盖)
       - 阶段 2：轻量实验，每 GPU 最多 8 进程 (--workers 可覆盖)
       - 进程通过 CUDA_VISIBLE_DEVICES 绑定到指定 GPU，轮询分配
       - OOM 失败的实验会在阶段结束后自动串行重试（独占 GPU 资源）
       - Ctrl+C 优雅终止：第一次中断立即关闭所有 worker 池并清理残留进程
+      - 使用 --no-prewarm 跳过预热（适用于模型已缓存的重复运行）
 
     \b
     示例:
@@ -336,6 +447,9 @@ def run_batch(
     typer.echo(f"找到 {len(configs)} 个配置文件")
 
     if parallel:
+        # Pre-warm models sequentially to avoid concurrent downloads
+        if not no_prewarm:
+            _prewarm_from_configs(configs)
         gpu_list = [int(g.strip()) for g in gpus.split(",") if g.strip()]
         _run_batch_parallel(configs, output_dir, workers, sd_workers, gpu_list)
     else:
@@ -881,6 +995,34 @@ def ui(
 
     application = create_app(model, device)
     application.launch(server_port=port, share=share)
+
+
+@app.command()
+def prewarm(
+    config_dir: Path = typer.Argument(..., help="包含 YAML 配置文件的目录"),
+) -> None:
+    """预下载实验所需全部模型到本地缓存。
+
+    在并行运行实验前使用，避免多进程同时触发下载导致冲突。
+    扫描 *config_dir* 中所有 YAML 文件，提取引用的分类器、
+    Stable Diffusion pipeline 和 CLIP 模型，逐一加载后释放。
+
+    \b
+    示例:
+      python -m src.cli prewarm configs/
+      python -m src.cli run-batch configs/ --parallel --gpus 0,1
+    """
+    if not config_dir.is_dir():
+        typer.echo(f"目录不存在: {config_dir}")
+        raise typer.Exit(1)
+
+    configs = sorted(config_dir.rglob("*.yaml")) + sorted(config_dir.rglob("*.yml"))
+    if not configs:
+        typer.echo(f"未找到配置文件: {config_dir}")
+        raise typer.Exit(1)
+
+    typer.echo(f"扫描到 {len(configs)} 个配置文件")
+    _prewarm_from_configs(configs)
 
 
 @app.command()
