@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import warnings
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend
+warnings.filterwarnings("ignore", message=".*Glyph .* missing from font.*")
 
 import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt

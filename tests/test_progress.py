@@ -35,3 +35,31 @@ def test_configure_progress_sets_common_disable_envs(monkeypatch) -> None:
     assert os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] == "1"
     assert os.environ["DISABLE_PROGRESS_BAR"] == "1"
     assert os.environ["TQDM_DISABLE"] == "1"
+
+
+def test_suppress_third_party_output_hides_stdout_stderr(capsys, monkeypatch) -> None:
+    """Noisy setup blocks should not leak stdout/stderr by default."""
+    from src.progress import suppress_third_party_output
+
+    monkeypatch.delenv("AIGC_SHOW_PROGRESS", raising=False)
+
+    with suppress_third_party_output():
+        print("hidden stdout")
+        print("hidden stderr", file=__import__("sys").stderr)
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+
+def test_suppress_third_party_output_can_be_disabled(capsys, monkeypatch) -> None:
+    """AIGC_SHOW_PROGRESS=1 should allow third-party output through."""
+    from src.progress import suppress_third_party_output
+
+    monkeypatch.setenv("AIGC_SHOW_PROGRESS", "1")
+
+    with suppress_third_party_output():
+        print("visible")
+
+    captured = capsys.readouterr()
+    assert "visible" in captured.out

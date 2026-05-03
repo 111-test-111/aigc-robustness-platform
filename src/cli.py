@@ -153,10 +153,13 @@ def _setup_worker_env() -> None:
     warnings.filterwarnings("ignore", category=DeprecationWarning, module="transformers")
     warnings.filterwarnings("ignore", message=".*allow_pickle.*")
     warnings.filterwarnings("ignore", message=".*unsafe serialization.*")
+    warnings.filterwarnings("ignore", message=".*local_dir_use_symlinks.*")
+    warnings.filterwarnings("ignore", message=".*Glyph .* missing from font.*")
     # huggingface_hub: local_dir_use_symlinks is deprecated and ignored
     warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
     # torchvision: lpips uses deprecated pretrained=True for AlexNet
     warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
+    warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
     configure_third_party_progress()
@@ -461,10 +464,14 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
     if needs_clip:
         typer.echo("  Loading CLIP model: openai/clip-vit-base-patch16 ... ", nl=False)
         try:
+            from src.progress import suppress_third_party_output
             from transformers import CLIPModel, CLIPProcessor
 
-            clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-            clip_proc = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+            with suppress_third_party_output():
+                clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+                clip_proc = CLIPProcessor.from_pretrained(
+                    "openai/clip-vit-base-patch16"
+                )
             del clip_model, clip_proc
             typer.echo("OK")
         except Exception as exc:

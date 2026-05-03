@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import os
+from collections.abc import Iterator
 
 SHOW_PROGRESS_ENV = "AIGC_SHOW_PROGRESS"
 
@@ -49,6 +52,19 @@ def configure_third_party_progress() -> None:
         diffusers_logging.disable_progress_bar()
     except Exception:
         pass
+
+
+@contextlib.contextmanager
+def suppress_third_party_output() -> Iterator[None]:
+    """Hide noisy stdout/stderr from third-party setup when progress is disabled."""
+    if show_progress_bars():
+        yield
+        return
+
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(
+        io.StringIO()
+    ):
+        yield
 
     try:
         from transformers.utils import logging as transformers_logging

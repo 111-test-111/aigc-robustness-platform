@@ -7,7 +7,11 @@ from typing import Any
 
 import torch
 
-from src.progress import configure_third_party_progress
+from src.progress import (
+    configure_third_party_progress,
+    show_progress_bars,
+    suppress_third_party_output,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +73,10 @@ def load_sd_pipeline(
         kwargs["safety_checker"] = None
         kwargs["requires_safety_checker"] = False
 
-    pipe = AutoPipelineForImage2Image.from_pretrained(model_id, **kwargs).to(device)
+    with suppress_third_party_output():
+        pipe = AutoPipelineForImage2Image.from_pretrained(model_id, **kwargs).to(device)
+    if hasattr(pipe, "set_progress_bar_config"):
+        pipe.set_progress_bar_config(disable=not show_progress_bars())
 
     if enable_attention_slicing:
         pipe.enable_attention_slicing()

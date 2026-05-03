@@ -4,11 +4,10 @@ task:
   device: cpu
 
 dataset:
-  name: cifar10
-  root: data/raw/cifar10
+  name: synthetic
+  root: ""
   num_samples: 2
   image_size: 32
-  download: true
 
 target_model:
   type: classifier

@@ -8,6 +8,7 @@ import torch
 
 from src.progress import (
     configure_third_party_progress,
+    suppress_third_party_output,
     third_party_progress_enabled,
 )
 
@@ -43,7 +44,8 @@ def _get_lpips(device: torch.device) -> torch.nn.Module:
             raise ImportError(
                 "lpips is required. Install with: pip install lpips"
             )
-        _lpips_fn = lpips.LPIPS(net="alex").to(device)
+        with suppress_third_party_output():
+            _lpips_fn = lpips.LPIPS(net="alex").to(device)
         _lpips_device = device
     elif _lpips_device != device:
         _lpips_fn = _lpips_fn.to(device)
@@ -162,8 +164,11 @@ def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
         )
 
     if _clip_model is None:
-        _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-        _clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+        with suppress_third_party_output():
+            _clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
+            _clip_processor = CLIPProcessor.from_pretrained(
+                "openai/clip-vit-base-patch16"
+            )
 
     model = _clip_model
     processor = _clip_processor
