@@ -346,6 +346,32 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
             except Exception as exc:
                 typer.echo(f"SKIP ({exc})")
 
+    # Warm FID inception weights (torchmetrics lazily downloads on first use) -
+    if has_quality_metrics:
+        # Check if any config actually uses FID (not just CLIP)
+        needs_fid = False
+        for cfg_path in configs:
+            try:
+                from omegaconf import OmegaConf
+                cfg = OmegaConf.load(cfg_path)
+                if "fid" in cfg.get("metrics", {}).get("quality", []):
+                    needs_fid = True
+                    break
+            except Exception:
+                continue
+        if needs_fid:
+            typer.echo("  Pre-downloading FID inception weights ... ", nl=False)
+            try:
+                from torchmetrics.image.fid import FrechetInceptionDistance
+                _fid = FrechetInceptionDistance(feature=64).to(device)
+                # Run a dummy forward pass to trigger weight download
+                _dummy = torch.zeros(1, 3, 299, 299, dtype=torch.uint8, device=device)
+                _fid.update(_dummy, real=True)
+                del _fid, _dummy
+                typer.echo("OK")
+            except Exception as exc:
+                typer.echo(f"SKIP ({exc})")
+
     # Warm CLIP (used by quality metrics) --------------------------------
     if has_quality_metrics:
         typer.echo("  Loading CLIP model: openai/clip-vit-base-patch16 ... ", nl=False)
