@@ -6,6 +6,11 @@ import os
 
 import torch
 
+from src.progress import (
+    configure_third_party_progress,
+    third_party_progress_enabled,
+)
+
 _lpips_fn: torch.nn.Module | None = None
 _lpips_device: torch.device | None = None
 _clip_model = None
@@ -76,8 +81,11 @@ def get_fid_inception_weights_url() -> str:
     )
 
 
-def predownload_fid_inception_weights(progress: bool = True) -> None:
+def predownload_fid_inception_weights(progress: bool | None = None) -> None:
     """Download torch-fidelity's Inception weights into torch.hub cache."""
+    if progress is None:
+        progress = third_party_progress_enabled()
+
     torch.hub.load_state_dict_from_url(
         get_fid_inception_weights_url(),
         map_location="cpu",
@@ -144,6 +152,7 @@ def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
     global _clip_model, _clip_processor
 
     try:
+        configure_third_party_progress()
         import torch.nn.functional as F
         from PIL import Image
         from transformers import CLIPModel, CLIPProcessor

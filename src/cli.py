@@ -145,6 +145,8 @@ def _setup_worker_env() -> None:
     """
     import warnings
 
+    from src.progress import configure_third_party_progress
+
     # transformers: Siglip2ImageProcessorFast → Siglip2ImageProcessor
     # transformers: safetensors missing → falling back to pickle
     warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
@@ -157,6 +159,7 @@ def _setup_worker_env() -> None:
     warnings.filterwarnings("ignore", category=UserWarning, module="torchvision")
 
     os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+    configure_third_party_progress()
 
 
 def _empty_device_cache() -> None:
@@ -348,7 +351,7 @@ def _prewarm_fid_weights() -> None:
     # in torch.hub's checkpoint cache. Download that exact file up front so
     # workers do not race on GitHub during the first FID computation.
     logger.info("Using FID Inception weights URL: %s", get_fid_inception_weights_url())
-    predownload_fid_inception_weights(progress=True)
+    predownload_fid_inception_weights()
 
     from torchmetrics.image.fid import FrechetInceptionDistance
 
@@ -376,6 +379,8 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
     slow startup in parallel mode).
     """
     import torch
+
+    _setup_worker_env()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     typer.echo(f"── 模型预热 (device={device}) ──")
@@ -488,6 +493,8 @@ def run(
     config: Path = typer.Argument(..., help="实验配置 YAML 路径", exists=True),
 ) -> None:
     """运行攻防验证实验"""
+    _setup_worker_env()
+
     from src.task_runner import run_experiment
 
     typer.echo(f"加载配置: {config}")
@@ -584,6 +591,8 @@ def _run_batch_sequential(
     output_dir: Path | None,
 ) -> None:
     """Run experiments one-by-one in the current process."""
+    _setup_worker_env()
+
     from src.task_runner import run_experiment
 
     report_dirs: list[Path] = []

@@ -7,6 +7,8 @@ from typing import Any
 
 import torch
 
+from src.progress import configure_third_party_progress
+
 logger = logging.getLogger(__name__)
 
 # Process-level cache for SD pipelines to avoid reloading
@@ -41,6 +43,7 @@ def load_sd_pipeline(
         ImportError: If the ``diffusers`` package is not installed.
     """
     try:
+        configure_third_party_progress()
         from diffusers import AutoPipelineForImage2Image
     except ImportError:
         raise ImportError(

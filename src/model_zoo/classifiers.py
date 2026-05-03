@@ -8,6 +8,7 @@ import torch.nn as nn
 from torchvision import models
 
 from src.model_zoo.registry import MODEL_REGISTRY, register
+from src.progress import third_party_progress_enabled
 
 TORCHVISION_WEIGHTS_BASE_URL_ENV = "AIGC_TORCHVISION_WEIGHTS_BASE_URL"
 DEFAULT_TORCHVISION_WEIGHTS_BASE_URL = "https://download.pytorch.org/models"
@@ -57,7 +58,7 @@ def load_torchvision_state_dict(filename: str) -> dict:
     return torch.hub.load_state_dict_from_url(
         get_torchvision_weights_url(filename),
         map_location="cpu",
-        progress=True,
+        progress=third_party_progress_enabled(),
         check_hash=True,
         file_name=filename,
     )
