@@ -120,6 +120,82 @@ def test_is_sd_config_classification():
     assert not _is_sd_config(Path("configs/does_not_exist.yaml"))
 
 
+def test_collect_prewarm_requirements(tmp_path):
+    """Prewarm should detect the exact models and quality caches needed."""
+    from pathlib import Path
+
+    from omegaconf import OmegaConf
+
+    from src.cli import _collect_prewarm_requirements
+
+    cfg = OmegaConf.create({
+        "target_model": {
+            "type": "classifier",
+            "name": "resnet50",
+            "weights": "imagenet",
+        },
+        "attacks": [
+            {
+                "name": "diffusion",
+                "backend": "sd",
+                "generator": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            },
+            {
+                "name": "diffusion",
+                "backend": "mock",
+                "generator": "mock",
+            },
+            {
+                "name": "diffusion",
+            },
+        ],
+        "defenses": [
+            {
+                "name": "diffusion_purification",
+                "backend": "sd",
+                "model_id": "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            }
+        ],
+        "metrics": {"quality": ["lpips", "clip_score", "fid"]},
+    })
+    config_path = tmp_path / "config.yaml"
+    OmegaConf.save(cfg, config_path)
+
+    classifiers, sd_pipelines, needs_fid, needs_clip = (
+        _collect_prewarm_requirements([Path(config_path)])
+    )
+
+    assert classifiers == {"resnet50"}
+    assert sd_pipelines == {"stable-diffusion-v1-5/stable-diffusion-v1-5"}
+    assert needs_fid
+    assert needs_clip
+
+
+def test_collect_prewarm_requirements_ignores_lightweight_config(tmp_path):
+    """Mock/no-weight configs should not force network prewarming."""
+    from omegaconf import OmegaConf
+
+    from src.cli import _collect_prewarm_requirements
+
+    cfg = OmegaConf.create({
+        "target_model": {"name": "resnet50", "weights": "none"},
+        "attacks": [{"name": "fgsm", "eps": 0.03}],
+        "defenses": [{"name": "jpeg", "quality": 75}],
+        "metrics": {"attack": ["asr"], "defense": ["robust_accuracy"]},
+    })
+    config_path = tmp_path / "light.yaml"
+    OmegaConf.save(cfg, config_path)
+
+    classifiers, sd_pipelines, needs_fid, needs_clip = (
+        _collect_prewarm_requirements([config_path])
+    )
+
+    assert classifiers == set()
+    assert sd_pipelines == set()
+    assert not needs_fid
+    assert not needs_clip
+
+
 def test_per_gpu_pool_distribution():
     """Verify round-robin distributes configs evenly across GPUs."""
     from collections import Counter

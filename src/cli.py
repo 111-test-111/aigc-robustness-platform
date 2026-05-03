@@ -10,11 +10,13 @@ import signal
 import subprocess
 import time
 from pathlib import Path
+from typing import Any
 
 import typer
 
 app = typer.Typer(help="AIGC 无限制对抗样本攻防验证平台")
 logger = logging.getLogger(__name__)
+DEFAULT_SD_MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
 
 
 # ======================================================================
@@ -218,47 +220,139 @@ def _is_sd_config(config_path: Path) -> bool:
     Classifies a config as "SD-heavy" when any attack or defense uses the
     ``sd`` backend (i.e. loads an actual SD model, not ``mock``).  This
     determines VRAM scheduling in parallel mode.
-
-    Uses raw YAML parsing for speed and to avoid pulling in OmegaConf at
-    module-import time.  Falls back to OmegaConf when PyYAML is absent
-    (unlikely, since OmegaConf itself depends on PyYAML).
     """
-    try:
-        import yaml
-
-        with open(config_path) as fh:
-            cfg = yaml.safe_load(fh) or {}
-    except Exception:
-        try:
-            from omegaconf import OmegaConf
-
-            cfg = OmegaConf.load(config_path)
-        except Exception:
-            return False
-
-    for attack in cfg.get("attacks", []):
-        name = attack.get("name", "")
-        backend = attack.get("backend", "")
-        if name == "diffusion" and backend != "mock":
-            return True
-        if backend == "sd":
-            return True
-
-    for defense in cfg.get("defenses", []):
-        name = defense.get("name", "")
-        backend = defense.get("backend", "")
-        if name == "diffusion_purification" and backend != "mock":
-            return True
-        if backend == "sd":
-            return True
-
-    return False
+    cfg = _load_plain_config(config_path)
+    return any(
+        _uses_sd_backend(item, "diffusion")
+        for item in _list_config_section(cfg.get("attacks", []))
+    ) or any(
+        _uses_sd_backend(item, "diffusion_purification")
+        for item in _list_config_section(cfg.get("defenses", []))
+    )
 
 
 def _is_oom_error(exc: Exception) -> bool:
     """Return True if the exception is a CUDA out-of-memory error."""
     msg = str(exc).lower()
     return "out of memory" in msg
+
+
+def _load_plain_config(config_path: Path) -> dict[str, Any]:
+    """Load a YAML config as a plain dict for lightweight CLI inspection."""
+    try:
+        import yaml
+
+        with open(config_path) as fh:
+            data = yaml.safe_load(fh) or {}
+    except Exception:
+        try:
+            from omegaconf import OmegaConf
+
+            data = OmegaConf.to_container(
+                OmegaConf.load(config_path), resolve=True
+            ) or {}
+        except Exception:
+            return {}
+
+    return data if isinstance(data, dict) else {}
+
+
+def _list_config_section(value: Any) -> list[dict[str, Any]]:
+    """Return a list of dict entries from a config section."""
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _uses_sd_backend(item: dict[str, Any], default_sd_name: str) -> bool:
+    """Return True when a config item will load a real SD pipeline."""
+    name = str(item.get("name", ""))
+    backend = str(item.get("backend", ""))
+    return backend == "sd" or (name == default_sd_name and backend != "mock")
+
+
+def _collect_prewarm_requirements(
+    configs: list[Path],
+) -> tuple[set[str], set[str], bool, bool]:
+    """Collect classifiers, SD pipelines, and quality models needed by configs."""
+    classifiers: set[str] = set()
+    sd_pipelines: set[str] = set()
+    needs_fid = False
+    needs_clip = False
+
+    for cfg_path in configs:
+        cfg = _load_plain_config(cfg_path)
+        if not cfg:
+            continue
+
+        tm = cfg.get("target_model", {})
+        if isinstance(tm, dict):
+            weights = str(tm.get("weights", "imagenet")).lower()
+            if weights != "none":
+                classifiers.add(str(tm.get("name", "resnet50")))
+
+        for attack in _list_config_section(cfg.get("attacks", [])):
+            if _uses_sd_backend(attack, "diffusion"):
+                model_id = (
+                    attack.get("generator")
+                    or attack.get("model_id")
+                    or DEFAULT_SD_MODEL_ID
+                )
+                if model_id and model_id != "mock":
+                    sd_pipelines.add(str(model_id))
+
+        for defense in _list_config_section(cfg.get("defenses", [])):
+            if _uses_sd_backend(defense, "diffusion_purification"):
+                model_id = (
+                    defense.get("model_id")
+                    or defense.get("generator")
+                    or DEFAULT_SD_MODEL_ID
+                )
+                if model_id and model_id != "mock":
+                    sd_pipelines.add(str(model_id))
+
+        metrics = cfg.get("metrics", {})
+        quality = metrics.get("quality", []) if isinstance(metrics, dict) else []
+        if isinstance(quality, list):
+            needs_fid = needs_fid or "fid" in quality
+            needs_clip = needs_clip or "clip_score" in quality
+
+    return classifiers, sd_pipelines, needs_fid, needs_clip
+
+
+def _prewarm_fid_weights() -> None:
+    """Download and verify the Inception weights used by torchmetrics FID."""
+    import torch
+
+    weights_url = (
+        "https://github.com/toshas/torch-fidelity/releases/download/v0.2.0/"
+        "weights-inception-2015-12-05-6726825d.pth"
+    )
+
+    # torchmetrics delegates to torch-fidelity, whose Inception weights live
+    # in torch.hub's checkpoint cache. Download that exact file up front so
+    # workers do not race on GitHub during the first FID computation.
+    torch.hub.load_state_dict_from_url(
+        weights_url,
+        map_location="cpu",
+        progress=True,
+    )
+
+    from torchmetrics.image.fid import FrechetInceptionDistance
+
+    # Cache warmup does not need GPU residency; keep it on CPU to avoid a
+    # transient Inception allocation after SD has just been loaded and freed.
+    fid_device = torch.device("cpu")
+    fid = FrechetInceptionDistance(feature=64).to(fid_device)
+
+    # Run a full real/fake/compute cycle. Some versions delay feature extractor
+    # initialization until compute(), so update(real=True) alone is insufficient.
+    real = torch.zeros(2, 3, 299, 299, dtype=torch.uint8, device=fid_device)
+    fake = torch.full((2, 3, 299, 299), 255, dtype=torch.uint8, device=fid_device)
+    fid.update(real, real=True)
+    fid.update(fake, real=False)
+    fid.compute()
+    del fid, real, fake
 
 
 def _prewarm_from_configs(configs: list[Path]) -> None:
@@ -274,43 +368,15 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     typer.echo(f"── 模型预热 (device={device}) ──")
 
-    # Collect unique models from configs ---------------------------------
-    classifiers: set[str] = set()
-    sd_pipelines: set[str] = set()
-    has_quality_metrics = False
+    classifiers, sd_pipelines, needs_fid, needs_clip = (
+        _collect_prewarm_requirements(configs)
+    )
 
-    for cfg_path in configs:
-        try:
-            from omegaconf import OmegaConf
-            cfg = OmegaConf.load(cfg_path)
-        except Exception:
-            continue
-
-        # Classifiers
-        tm = cfg.get("target_model", {})
-        if tm.get("weights") not in (None, "none"):
-            classifiers.add(tm.get("name", "resnet50"))
-
-        # SD pipelines (attack)
-        for atk in cfg.get("attacks", []):
-            gen = atk.get("generator", "")
-            if gen and gen != "mock":
-                sd_pipelines.add(gen)
-
-        # SD pipelines (defense)
-        for dfn in cfg.get("defenses", []):
-            mid = dfn.get("model_id", "")
-            if mid and mid != "mock":
-                sd_pipelines.add(mid)
-
-        # Quality metrics
-        quality = cfg.get("metrics", {}).get("quality", [])
-        if "clip_score" in quality or "fid" in quality:
-            has_quality_metrics = True
-
-    if not classifiers and not sd_pipelines and not has_quality_metrics:
+    if not classifiers and not sd_pipelines and not needs_fid and not needs_clip:
         typer.echo("  No models to prewarm.")
         return
+
+    failures: list[str] = []
 
     # Warm classifiers ---------------------------------------------------
     if classifiers:
@@ -323,57 +389,43 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
                 del model
                 typer.echo("OK")
             except Exception as exc:
-                typer.echo(f"SKIP ({exc})")
+                failures.append(f"classifier {name}: {exc}")
+                typer.echo(f"FAIL ({exc})")
 
     # Warm SD pipelines --------------------------------------------------
     if sd_pipelines:
-        from src.model_zoo.generators import _PIPELINE_CACHE
+        from src.model_zoo.generators import _PIPELINE_CACHE, load_sd_pipeline
 
         for model_id in sorted(sd_pipelines):
-            typer.echo(f"  Loading SD pipeline: {model_id} ... ", nl=False)
+            typer.echo(f"  Loading SD pipeline: {model_id}")
             try:
-                from diffusers import AutoPipelineForImage2Image
-
-                pipe = AutoPipelineForImage2Image.from_pretrained(
-                    model_id,
-                    torch_dtype=torch.float32,
-                    safety_checker=None,
-                    requires_safety_checker=False,
+                dtype = torch.float16 if device.type == "cuda" else torch.float32
+                pipe = load_sd_pipeline(
+                    model_id=model_id,
+                    device=device,
+                    torch_dtype=dtype,
                 )
                 del pipe
                 _PIPELINE_CACHE.clear()
-                typer.echo("OK")
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
+                typer.echo("    OK")
             except Exception as exc:
-                typer.echo(f"SKIP ({exc})")
+                failures.append(f"SD pipeline {model_id}: {exc}")
+                typer.echo(f"    FAIL ({exc})")
 
-    # Warm FID inception weights (torchmetrics lazily downloads on first use) -
-    if has_quality_metrics:
-        # Check if any config actually uses FID (not just CLIP)
-        needs_fid = False
-        for cfg_path in configs:
-            try:
-                from omegaconf import OmegaConf
-                cfg = OmegaConf.load(cfg_path)
-                if "fid" in cfg.get("metrics", {}).get("quality", []):
-                    needs_fid = True
-                    break
-            except Exception:
-                continue
-        if needs_fid:
-            typer.echo("  Pre-downloading FID inception weights ... ", nl=False)
-            try:
-                from torchmetrics.image.fid import FrechetInceptionDistance
-                _fid = FrechetInceptionDistance(feature=64).to(device)
-                # Run a dummy forward pass to trigger weight download
-                _dummy = torch.zeros(1, 3, 299, 299, dtype=torch.uint8, device=device)
-                _fid.update(_dummy, real=True)
-                del _fid, _dummy
-                typer.echo("OK")
-            except Exception as exc:
-                typer.echo(f"SKIP ({exc})")
+    # Warm FID inception weights (torchmetrics delegates to torch-fidelity) ---
+    if needs_fid:
+        typer.echo("  Pre-downloading FID inception weights ... ", nl=False)
+        try:
+            _prewarm_fid_weights()
+            typer.echo("OK")
+        except Exception as exc:
+            failures.append(f"FID inception weights: {exc}")
+            typer.echo(f"FAIL ({exc})")
 
     # Warm CLIP (used by quality metrics) --------------------------------
-    if has_quality_metrics:
+    if needs_clip:
         typer.echo("  Loading CLIP model: openai/clip-vit-base-patch16 ... ", nl=False)
         try:
             from transformers import CLIPModel, CLIPProcessor
@@ -383,10 +435,17 @@ def _prewarm_from_configs(configs: list[Path]) -> None:
             del clip_model, clip_proc
             typer.echo("OK")
         except Exception as exc:
-            typer.echo(f"SKIP ({exc})")
+            failures.append(f"CLIP openai/clip-vit-base-patch16: {exc}")
+            typer.echo(f"FAIL ({exc})")
 
     if device.type == "cuda":
         torch.cuda.empty_cache()
+
+    if failures:
+        typer.echo("── 预热失败：以下资源没有成功缓存 ──")
+        for item in failures:
+            typer.echo(f"  - {item}")
+        raise typer.Exit(1)
 
     typer.echo("── 预热完成 ──\n")
 
@@ -433,7 +492,7 @@ def run_batch(
     no_prewarm: bool = typer.Option(
         False,
         "--no-prewarm",
-        help="跳过模型预热 (默认在并行模式下自动预热)",
+        help="跳过模型预热 (默认在批量运行前自动预热)",
     ),
 ) -> None:
     """批量运行目录中的所有实验并生成对比报告。
@@ -446,7 +505,8 @@ def run_batch(
     \b
     并行模式 (--parallel):
       两阶段 VRAM 感知调度，支持多 GPU 亲和性分配：
-      - 默认自动预热：并行前顺序加载所有模型到本地缓存，避免并发下载冲突
+      - 默认自动预热：运行前顺序加载所有模型到本地缓存，
+        避免下载超时和并发冲突
       - 阶段 1：SD 扩散类实验，每 GPU 最多 1 进程 (--sd-workers 可覆盖)
       - 阶段 2：轻量实验，每 GPU 最多 8 进程 (--workers 可覆盖)
       - 进程通过 CUDA_VISIBLE_DEVICES 绑定到指定 GPU，轮询分配
@@ -476,10 +536,10 @@ def run_batch(
 
     typer.echo(f"找到 {len(configs)} 个配置文件")
 
+    if not no_prewarm:
+        _prewarm_from_configs(configs)
+
     if parallel:
-        # Pre-warm models sequentially to avoid concurrent downloads
-        if not no_prewarm:
-            _prewarm_from_configs(configs)
         gpu_list = [int(g.strip()) for g in gpus.split(",") if g.strip()]
         _run_batch_parallel(configs, output_dir, workers, sd_workers, gpu_list)
     else:
@@ -1035,7 +1095,8 @@ def prewarm(
 
     在并行运行实验前使用，避免多进程同时触发下载导致冲突。
     扫描 *config_dir* 中所有 YAML 文件，提取引用的分类器、
-    Stable Diffusion pipeline 和 CLIP 模型，逐一加载后释放。
+    Stable Diffusion pipeline、FID Inception 权重和 CLIP 模型，
+    逐一加载后释放。
 
     \b
     示例:
