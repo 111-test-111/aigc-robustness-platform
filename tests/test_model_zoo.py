@@ -4,12 +4,61 @@ import pytest
 import torch
 
 from src.model_zoo.registry import MODEL_REGISTRY
-from src.model_zoo.classifiers import load_classifier
+from src.model_zoo.classifiers import (
+    DEFAULT_TORCHVISION_WEIGHTS_BASE_URL,
+    get_torchvision_weights_base_url,
+    get_torchvision_weights_url,
+    load_torchvision_state_dict,
+    load_classifier,
+)
 
 
 def test_registry_has_resnet50():
     """Verify 'resnet50' is registered after importing classifiers."""
     assert "resnet50" in MODEL_REGISTRY
+
+
+def test_torchvision_weights_url_defaults_to_pytorch(monkeypatch):
+    """Torchvision classifier weights default to PyTorch's official host."""
+    monkeypatch.delenv("AIGC_TORCHVISION_WEIGHTS_BASE_URL", raising=False)
+    assert get_torchvision_weights_base_url() == DEFAULT_TORCHVISION_WEIGHTS_BASE_URL
+    assert get_torchvision_weights_url("densenet121-a639ec97.pth") == (
+        "https://download.pytorch.org/models/densenet121-a639ec97.pth"
+    )
+
+
+def test_torchvision_weights_url_can_use_mirror(monkeypatch):
+    """Server deployments can route torchvision weights through a mirror base."""
+    monkeypatch.setenv(
+        "AIGC_TORCHVISION_WEIGHTS_BASE_URL", "https://mirror.example/pytorch/models/"
+    )
+    assert get_torchvision_weights_url("densenet121-a639ec97.pth") == (
+        "https://mirror.example/pytorch/models/densenet121-a639ec97.pth"
+    )
+
+
+def test_load_torchvision_state_dict_uses_mirror(monkeypatch):
+    """State-dict downloads should use the configured mirror and cache filename."""
+    calls = {}
+
+    def fake_load_state_dict_from_url(url, **kwargs):
+        calls["url"] = url
+        calls["kwargs"] = kwargs
+        return {}
+
+    monkeypatch.setenv(
+        "AIGC_TORCHVISION_WEIGHTS_BASE_URL", "https://mirror.example/pytorch/models"
+    )
+    monkeypatch.setattr(
+        torch.hub, "load_state_dict_from_url", fake_load_state_dict_from_url
+    )
+
+    assert load_torchvision_state_dict("alexnet-owt-7be5be79.pth") == {}
+    assert calls["url"] == (
+        "https://mirror.example/pytorch/models/alexnet-owt-7be5be79.pth"
+    )
+    assert calls["kwargs"]["file_name"] == "alexnet-owt-7be5be79.pth"
+    assert calls["kwargs"]["check_hash"]
 
 
 def test_load_classifier_resnet50():

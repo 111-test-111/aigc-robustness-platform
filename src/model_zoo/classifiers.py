@@ -1,10 +1,16 @@
 """Classifier model loaders."""
 
+import os
+from urllib.parse import urlparse
+
 import torch
 import torch.nn as nn
 from torchvision import models
 
 from src.model_zoo.registry import MODEL_REGISTRY, register
+
+TORCHVISION_WEIGHTS_BASE_URL_ENV = "AIGC_TORCHVISION_WEIGHTS_BASE_URL"
+DEFAULT_TORCHVISION_WEIGHTS_BASE_URL = "https://download.pytorch.org/models"
 
 
 class ImageNetNormalizeWrapper(nn.Module):
@@ -24,13 +30,48 @@ class ImageNetNormalizeWrapper(nn.Module):
         return self.model((x - self.mean) / self.std)
 
 
+def get_torchvision_weights_base_url() -> str:
+    """Return the base URL used for torchvision classifier weights."""
+    return os.environ.get(TORCHVISION_WEIGHTS_BASE_URL_ENV, "").strip() or (
+        DEFAULT_TORCHVISION_WEIGHTS_BASE_URL
+    )
+
+
+def get_torchvision_weights_url(filename: str) -> str:
+    """Build a torchvision weight URL from a configurable mirror base."""
+    return f"{get_torchvision_weights_base_url().rstrip('/')}/{filename}"
+
+
+def _weights_filename(weights_enum) -> str:
+    """Extract the canonical checkpoint filename from a torchvision weight enum."""
+    return os.path.basename(urlparse(weights_enum.url).path)
+
+
+def _load_state_dict_from_weights(weights_enum) -> dict:
+    """Load a torchvision state dict, honoring the configured mirror base."""
+    return load_torchvision_state_dict(_weights_filename(weights_enum))
+
+
+def load_torchvision_state_dict(filename: str) -> dict:
+    """Load a torchvision checkpoint by filename from the configured base URL."""
+    return torch.hub.load_state_dict_from_url(
+        get_torchvision_weights_url(filename),
+        map_location="cpu",
+        progress=True,
+        check_hash=True,
+        file_name=filename,
+    )
+
+
 @register("resnet50")
 def load_resnet50(
     weights: str = "imagenet",
     device: torch.device = torch.device("cpu"),
 ) -> nn.Module:
     if weights == "imagenet":
-        model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V2)
+        weights_enum = models.ResNet50_Weights.IMAGENET1K_V2
+        model = models.resnet50(weights=None)
+        model.load_state_dict(_load_state_dict_from_weights(weights_enum))
         model = ImageNetNormalizeWrapper(model)
     else:
         model = models.resnet50(weights=None)
@@ -43,7 +84,9 @@ def load_vit_b_16(
     device: torch.device = torch.device("cpu"),
 ) -> nn.Module:
     if weights == "imagenet":
-        model = models.vit_b_16(weights=models.ViT_B_16_Weights.IMAGENET1K_V1)
+        weights_enum = models.ViT_B_16_Weights.IMAGENET1K_V1
+        model = models.vit_b_16(weights=None)
+        model.load_state_dict(_load_state_dict_from_weights(weights_enum))
         model = ImageNetNormalizeWrapper(model)
     else:
         model = models.vit_b_16(weights=None)
@@ -56,7 +99,9 @@ def load_densenet121(
     device: torch.device = torch.device("cpu"),
 ) -> nn.Module:
     if weights == "imagenet":
-        model = models.densenet121(weights=models.DenseNet121_Weights.IMAGENET1K_V1)
+        weights_enum = models.DenseNet121_Weights.IMAGENET1K_V1
+        model = models.densenet121(weights=None)
+        model.load_state_dict(_load_state_dict_from_weights(weights_enum))
         model = ImageNetNormalizeWrapper(model)
     else:
         model = models.densenet121(weights=None)

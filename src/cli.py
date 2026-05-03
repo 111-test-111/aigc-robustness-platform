@@ -326,7 +326,10 @@ def _prewarm_lpips_weights() -> None:
     """Download and verify LPIPS AlexNet weights used by quality metrics."""
     import torch
 
+    from src.model_zoo.classifiers import load_torchvision_state_dict
     from src.evaluation.quality_metrics import compute_lpips
+
+    load_torchvision_state_dict("alexnet-owt-7be5be79.pth")
 
     img = torch.zeros(1, 3, 64, 64)
     compute_lpips(img, img)
