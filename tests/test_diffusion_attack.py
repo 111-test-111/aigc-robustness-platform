@@ -10,6 +10,7 @@ import inspect
 import pytest
 import torch
 import torch.nn as nn
+from PIL import Image
 
 
 class TinyClassifier(nn.Module):
@@ -88,3 +89,42 @@ class TestDiffusionAttackDefaults:
         # The config parameter should have no default restriction
         config_param = sig.parameters["config"]
         assert config_param.default is inspect.Parameter.empty
+
+
+class FakeImg2ImgResult:
+    def __init__(self, images):
+        self.images = images
+
+
+class FakeImg2ImgPipe:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+
+    def __call__(self, *, prompt, image, **kwargs):
+        self.batch_sizes.append(len(image))
+        assert len(prompt) == len(image)
+        return FakeImg2ImgResult([
+            Image.new("RGB", img.size, color=(idx, idx, idx))
+            for idx, img in enumerate(image)
+        ])
+
+
+def test_sd_round_uses_configured_batches() -> None:
+    """SD img2img calls should be chunked instead of one call per image."""
+    from src.attack_engine.diffusion_attack import DiffusionAttack
+
+    attack = DiffusionAttack()
+    pipe = FakeImg2ImgPipe()
+    batch = torch.rand(5, 3, 16, 16)
+
+    result = attack._generate_one_sd_round(
+        pipe,
+        batch,
+        prompt="a photo",
+        strength=0.7,
+        guidance_scale=7.5,
+        sd_batch_size=2,
+    )
+
+    assert pipe.batch_sizes == [2, 2, 1]
+    assert result.shape == batch.shape

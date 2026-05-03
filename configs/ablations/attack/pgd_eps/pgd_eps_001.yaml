@@ -1,7 +1,7 @@
 # PGD eps 消融：极小扰动
 task:
   name: pgd_eps_001
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

@@ -23,6 +23,7 @@ attacks:
     strength: 0.5
     guidance_scale: 1.0
     num_candidates: 1
+    sd_batch_size: 8
 
 defenses:
   - name: diffusion_purification
@@ -30,6 +31,7 @@ defenses:
     model_id: hf-internal-testing/tiny-stable-diffusion-pipe
     noise_level: 0.05
     steps: 2
+    sd_batch_size: 8
 
 metrics:
   attack:

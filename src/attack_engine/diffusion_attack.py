@@ -68,6 +68,7 @@ class DiffusionAttack(Attack):
         guidance_scale: float = config.get("guidance_scale", 7.5)
         num_candidates: int = config.get("num_candidates", 5)
         target_class: int | None = config.get("target_class", None)
+        sd_batch_size: int = max(1, int(config.get("sd_batch_size", 4)))
 
         # Fallback controls
         fallback_enabled: bool = config.get("fallback_enabled", True)
@@ -104,7 +105,7 @@ class DiffusionAttack(Attack):
                     cand = self._generate_one_mock_round(batch, strength)
                 else:
                     cand = self._generate_one_sd_round(
-                        pipe, batch, prompt, strength, guidance_scale
+                        pipe, batch, prompt, strength, guidance_scale, sd_batch_size
                     )
 
             # Evaluate against target classifier.
@@ -153,6 +154,7 @@ class DiffusionAttack(Attack):
                 prompt=prompt,
                 strength=strength,
                 guidance_scale=guidance_scale,
+                sd_batch_size=sd_batch_size,
                 fallback_strength_delta=fallback_strength_delta,
                 fallback_candidates=fallback_candidates,
             )
@@ -172,6 +174,7 @@ class DiffusionAttack(Attack):
                 "strength": strength,
                 "guidance_scale": guidance_scale,
                 "num_candidates": num_candidates,
+                "sd_batch_size": sd_batch_size,
                 "fallback_used": fallback_used,
                 "elapsed_sec": elapsed,
             },
@@ -188,8 +191,14 @@ class DiffusionAttack(Attack):
         prompt: str,
         strength: float,
         guidance_scale: float,
+        sd_batch_size: int = 4,
     ) -> torch.Tensor:
-        """Run img2img once, producing one candidate per image.
+        """Run one img2img round, producing one candidate per image.
+
+        Stable Diffusion pipelines support list inputs.  Chunking the tensor
+        preserves the experiment semantics (one candidate per original image)
+        while replacing hundreds of Python-level single-image pipeline calls
+        with a small number of batched calls.
 
         Returns:
             Tensor of shape ``(B, C, H, W)`` in ``[0, 1]``.
@@ -197,17 +206,25 @@ class DiffusionAttack(Attack):
         to_pil = ToPILImage()
         candidates: list[torch.Tensor] = []
 
-        for i in range(batch.shape[0]):
-            pil_img = to_pil(batch[i].clamp(0, 1).cpu())
+        for start in range(0, batch.shape[0], sd_batch_size):
+            chunk = batch[start:start + sd_batch_size]
+            pil_images = [
+                to_pil(img.clamp(0, 1).cpu())
+                for img in chunk
+            ]
             result = pipe(
-                prompt=prompt,
-                image=pil_img,
+                prompt=[prompt] * len(pil_images),
+                image=pil_images,
                 strength=strength,
                 guidance_scale=guidance_scale,
                 num_inference_steps=20,
             )
-            generated = TF.to_tensor(result.images[0]).float()
-            candidates.append(generated)
+            if len(result.images) != len(pil_images):
+                raise RuntimeError(
+                    "SD img2img returned an unexpected number of images: "
+                    f"expected {len(pil_images)}, got {len(result.images)}"
+                )
+            candidates.extend(TF.to_tensor(img).float() for img in result.images)
 
         return torch.stack(candidates).to(batch.device)
 
@@ -291,6 +308,7 @@ class DiffusionAttack(Attack):
         prompt: str,
         strength: float,
         guidance_scale: float,
+        sd_batch_size: int,
         fallback_strength_delta: float,
         fallback_candidates: int,
     ) -> tuple[torch.Tensor, torch.Tensor, list[int], bool]:
@@ -322,7 +340,7 @@ class DiffusionAttack(Attack):
                 else:
                     cand = self._generate_one_sd_round(
                         pipe, failed_batch, prompt,
-                        fallback_strength, guidance_scale,
+                        fallback_strength, guidance_scale, sd_batch_size,
                     )
 
             with torch.no_grad():

@@ -1,7 +1,7 @@
 # AdvGAN 攻击消融：强扰动
 task:
   name: advgan_eps_008
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

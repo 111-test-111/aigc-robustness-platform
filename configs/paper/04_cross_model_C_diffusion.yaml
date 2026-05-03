@@ -2,7 +2,7 @@
 # 原始 04_cross_model_robustness 的 Part C: 1 attack × 4 defenses = 4 combos
 task:
   name: cross_model_diffusion
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -28,6 +28,7 @@ attacks:
     strength: 0.7
     guidance_scale: 7.5
     num_candidates: 5
+    sd_batch_size: 8
 
 defenses:
   - name: jpeg
@@ -42,6 +43,7 @@ defenses:
     model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
     noise_level: 0.1
     steps: 50
+    sd_batch_size: 8
 
 metrics:
   attack:

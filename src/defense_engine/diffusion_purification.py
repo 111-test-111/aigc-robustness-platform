@@ -59,6 +59,7 @@ class DiffusionPurificationDefense(Defense):
             "model_id", "stable-diffusion-v1-5/stable-diffusion-v1-5"
         )
         backend: str = config.get("backend", "sd")
+        sd_batch_size: int = max(1, int(config.get("sd_batch_size", 4)))
 
         start = time.perf_counter()
 
@@ -73,7 +74,9 @@ class DiffusionPurificationDefense(Defense):
             actual_backend = "gaussian_blur_fallback"
         else:
             try:
-                defended = self._denoise_with_sd(noisy, model_id, steps, batch.device)
+                defended = self._denoise_with_sd(
+                    noisy, model_id, steps, batch.device, sd_batch_size
+                )
                 actual_backend = "stable_diffusion"
             except (ImportError, RuntimeError, OSError) as exc:
                 logger.warning(
@@ -96,6 +99,7 @@ class DiffusionPurificationDefense(Defense):
                 "model_id": model_id,
                 "noise_level": noise_level,
                 "steps": steps,
+                "sd_batch_size": sd_batch_size,
             },
         )
 
@@ -109,8 +113,9 @@ class DiffusionPurificationDefense(Defense):
         model_id: str,
         steps: int,
         device: torch.device,
+        sd_batch_size: int = 4,
     ) -> torch.Tensor:
-        """Denoise using a Stable-Diffusion img2img pipeline with low strength."""
+        """Denoise using batched Stable-Diffusion img2img with low strength."""
         from torchvision.transforms import ToPILImage
 
         from src.model_zoo.generators import load_sd_pipeline
@@ -120,17 +125,24 @@ class DiffusionPurificationDefense(Defense):
 
         denoised: list[torch.Tensor] = []
         denoise_strength = max(0.3, min(0.9, 1.0 / max(steps, 1)))
-        for img in noisy:
-            pil_img = to_pil(img.clamp(0, 1).cpu())
+        for start in range(0, noisy.shape[0], sd_batch_size):
+            chunk = noisy[start:start + sd_batch_size]
+            pil_images = [
+                to_pil(img.clamp(0, 1).cpu())
+                for img in chunk
+            ]
             result = pipe(
-                prompt="a clean photo",
-                image=pil_img,
+                prompt=["a clean photo"] * len(pil_images),
+                image=pil_images,
                 strength=denoise_strength,
                 num_inference_steps=steps,
             )
-            # Convert PIL image to tensor correctly
-            tensor = TF.to_tensor(result.images[0]).float()
-            denoised.append(tensor)
+            if len(result.images) != len(pil_images):
+                raise RuntimeError(
+                    "SD purification returned an unexpected number of images: "
+                    f"expected {len(pil_images)}, got {len(result.images)}"
+                )
+            denoised.extend(TF.to_tensor(img).float() for img in result.images)
 
         return torch.stack(denoised).to(device)
 

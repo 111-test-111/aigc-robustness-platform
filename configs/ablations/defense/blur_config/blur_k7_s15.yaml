@@ -1,7 +1,7 @@
 # Gaussian Blur 消融：大核大sigma
 task:
   name: blur_k7_s15
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

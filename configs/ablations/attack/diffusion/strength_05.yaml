@@ -1,7 +1,7 @@
 # 扩散攻击强度消融：中等强度
 task:
   name: diffusion_strength_05
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -27,6 +27,7 @@ attacks:
     strength: 0.5
     guidance_scale: 7.5
     num_candidates: 5
+    sd_batch_size: 8
 
 defenses: []
 

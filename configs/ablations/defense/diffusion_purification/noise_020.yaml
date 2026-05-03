@@ -1,7 +1,7 @@
 # 扩散净化 noise_level 消融：高噪声
 task:
   name: purification_noise_020
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -27,6 +27,7 @@ attacks:
     strength: 0.7
     guidance_scale: 7.5
     num_candidates: 5
+    sd_batch_size: 8
 
 defenses:
   - name: diffusion_purification
@@ -34,6 +35,7 @@ defenses:
     model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
     noise_level: 0.2
     steps: 50
+    sd_batch_size: 8
 
 metrics:
   attack:

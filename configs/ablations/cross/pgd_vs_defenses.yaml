@@ -1,7 +1,7 @@
 # 攻击×防御 交互矩阵：PGD vs 全部防御
 task:
   name: pgd_vs_defenses
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

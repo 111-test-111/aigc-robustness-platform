@@ -1,7 +1,7 @@
 # JPEG 质量消融：低质量
 task:
   name: jpeg_q50
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

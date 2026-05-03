@@ -2,7 +2,7 @@
 # 原始 densenet121_baseline 的 Part A: 3 attacks × 3 defenses = 9 combos
 task:
   name: densenet121_traditional
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

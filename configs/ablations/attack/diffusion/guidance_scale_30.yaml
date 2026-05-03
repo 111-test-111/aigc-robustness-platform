@@ -1,7 +1,7 @@
 # 扩散攻击 guidance_scale 消融：低引导强度
 task:
   name: diffusion_guidance_30
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -27,6 +27,7 @@ attacks:
     strength: 0.7
     guidance_scale: 3.0
     num_candidates: 5
+    sd_batch_size: 8
 
 defenses: []
 

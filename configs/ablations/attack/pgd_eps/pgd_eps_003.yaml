@@ -1,7 +1,7 @@
 # PGD eps 消融：基线扰动
 task:
   name: pgd_eps_003
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

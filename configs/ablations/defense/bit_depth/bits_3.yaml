@@ -1,7 +1,7 @@
 # Bit Depth 消融：3-bit
 task:
   name: bits_3
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

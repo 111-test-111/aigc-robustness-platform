@@ -2,7 +2,7 @@
 # 原始 vit_b_16_baseline 的 Part B: 3 attacks × 1 defense = 3 combos
 task:
   name: vit_b_16_purification
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -37,6 +37,7 @@ defenses:
     model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
     noise_level: 0.1
     steps: 50
+    sd_batch_size: 8
 
 metrics:
   attack:

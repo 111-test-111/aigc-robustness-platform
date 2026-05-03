@@ -1,7 +1,7 @@
 # AdvGAN 训练轮数消融：多轮数
 task:
   name: advgan_epochs_100
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

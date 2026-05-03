@@ -16,6 +16,7 @@ _lpips_fn: torch.nn.Module | None = None
 _lpips_device: torch.device | None = None
 _clip_model = None
 _clip_processor = None
+_clip_device: torch.device | None = None
 FID_WEIGHTS_URL_ENV = "AIGC_FID_WEIGHTS_URL"
 FID_INCEPTION_WEIGHTS_FILENAME = "weights-inception-2015-12-05-6726825d.pth"
 DEFAULT_FID_INCEPTION_WEIGHTS_URL = (
@@ -151,7 +152,7 @@ def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
     Returns:
         CLIP score normalized to [0, 1] (higher = more consistent)
     """
-    global _clip_model, _clip_processor
+    global _clip_model, _clip_processor, _clip_device
 
     try:
         configure_third_party_progress()
@@ -173,26 +174,35 @@ def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
     model = _clip_model
     processor = _clip_processor
     device = images.device
+    if _clip_device != device:
+        model = model.to(device)
+        model.eval()
+        _clip_device = device
 
-    # Convert tensor images to PIL Images
-    pil_images = []
-    for i in range(images.shape[0]):
-        img = images[i]  # (C, H, W)
-        img_np = (img.permute(1, 2, 0).cpu().numpy() * 255).astype("uint8")
-        pil_images.append(Image.fromarray(img_np))
-
-    # Repeat prompt for each image to ensure proper broadcast
-    prompts = [prompt] * len(pil_images)
-    inputs = processor(
-        text=prompts, images=pil_images, return_tensors="pt", padding=True
-    )
+    batch_size = max(1, int(os.environ.get("AIGC_CLIP_BATCH_SIZE", "32")))
+    scores: list[torch.Tensor] = []
 
     with torch.no_grad():
-        outputs = model(**inputs)
-        image_embeds = F.normalize(outputs.image_embeds, dim=-1)
-        text_embeds = F.normalize(outputs.text_embeds, dim=-1)
-        # Per-image cosine similarity (diagonal of the similarity matrix)
-        similarity = (image_embeds @ text_embeds.T).diag()
-        clip_scores = similarity * 100.0
+        for start in range(0, images.shape[0], batch_size):
+            chunk = images[start:start + batch_size]
+            pil_images = []
+            for img in chunk:
+                img_np = (
+                    img.clamp(0, 1).permute(1, 2, 0).cpu().numpy() * 255
+                ).astype("uint8")
+                pil_images.append(Image.fromarray(img_np))
 
-    return float(clip_scores.mean().item() / 100.0)
+            prompts = [prompt] * len(pil_images)
+            inputs = processor(
+                text=prompts, images=pil_images, return_tensors="pt", padding=True
+            )
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            outputs = model(**inputs)
+            image_embeds = F.normalize(outputs.image_embeds, dim=-1)
+            text_embeds = F.normalize(outputs.text_embeds, dim=-1)
+            # Per-image cosine similarity (diagonal of the similarity matrix)
+            scores.append((image_embeds @ text_embeds.T).diag().detach().cpu())
+
+    if not scores:
+        return 0.0
+    return float(torch.cat(scores).mean().item())

@@ -2,7 +2,7 @@
 # FGSM + PGD 攻击，JPEG / Blur / BitDepth 防御
 task:
   name: traditional_attack_baseline
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

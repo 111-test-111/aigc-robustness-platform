@@ -1,7 +1,7 @@
 # 扩散攻击 num_candidates 消融：少候选数
 task:
   name: diffusion_candidates_3
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
@@ -27,6 +27,7 @@ attacks:
     strength: 0.7
     guidance_scale: 7.5
     num_candidates: 3
+    sd_batch_size: 8
 
 defenses: []
 

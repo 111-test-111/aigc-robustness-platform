@@ -1,6 +1,7 @@
 """Tests for the diffusion purification defense."""
 
 import torch
+from PIL import Image
 
 from src.defense_engine.base import Defense
 from src.defense_engine.diffusion_purification import DiffusionPurificationDefense
@@ -75,3 +76,42 @@ def test_config_defaults_used():
     result = defense.apply(batch, {"backend": "mock"})
     assert result.defended.shape == batch.shape
     assert result.latency_sec > 0
+
+
+class FakeImg2ImgResult:
+    def __init__(self, images):
+        self.images = images
+
+
+class FakeImg2ImgPipe:
+    def __init__(self) -> None:
+        self.batch_sizes: list[int] = []
+
+    def __call__(self, *, prompt, image, **kwargs):
+        self.batch_sizes.append(len(image))
+        assert len(prompt) == len(image)
+        return FakeImg2ImgResult([
+            Image.new("RGB", img.size, color=(idx, idx, idx))
+            for idx, img in enumerate(image)
+        ])
+
+
+def test_sd_purification_uses_configured_batches(monkeypatch):
+    """SD purification should denoise chunks, not call the pipeline per image."""
+    import src.model_zoo.generators as generators
+
+    pipe = FakeImg2ImgPipe()
+    monkeypatch.setattr(generators, "load_sd_pipeline", lambda *args, **kwargs: pipe)
+
+    defense = DiffusionPurificationDefense()
+    batch = torch.rand(5, 3, 16, 16)
+    result = defense._denoise_with_sd(
+        batch,
+        model_id="fake",
+        steps=10,
+        device=torch.device("cpu"),
+        sd_batch_size=2,
+    )
+
+    assert pipe.batch_sizes == [2, 2, 1]
+    assert result.shape == batch.shape

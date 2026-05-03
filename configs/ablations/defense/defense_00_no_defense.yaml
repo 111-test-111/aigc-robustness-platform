@@ -1,7 +1,7 @@
 # 防御消融实验 - 无防御基线
 task:
   name: defense_ablation_no_defense
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:

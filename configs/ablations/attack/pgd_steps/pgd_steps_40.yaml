@@ -1,7 +1,7 @@
 # PGD 迭代步数消融：多步数
 task:
   name: pgd_steps_40
-  seeds: [42, 123, 456, 789, 1024]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
