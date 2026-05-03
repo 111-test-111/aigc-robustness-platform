@@ -37,7 +37,7 @@ defenses:
     model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
     noise_level: 0.1
     steps: 50
-    sd_batch_size: 8
+    sd_batch_size: 4
 
 metrics:
   attack:

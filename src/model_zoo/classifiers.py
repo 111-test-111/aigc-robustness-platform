@@ -2,10 +2,12 @@
 
 import os
 import re
+from typing import Optional
 from urllib.parse import urlparse
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torchvision import models
 
 from src.model_zoo.registry import MODEL_REGISTRY, register
@@ -16,11 +18,18 @@ DEFAULT_TORCHVISION_WEIGHTS_BASE_URL = "https://download.pytorch.org/models"
 
 
 class ImageNetNormalizeWrapper(nn.Module):
-    """Wrap an ImageNet classifier while keeping external inputs in [0, 1]."""
+    """Wrap an ImageNet classifier while keeping external inputs in [0, 1].
 
-    def __init__(self, model: nn.Module) -> None:
+    Some torchvision classifiers, notably ViT-B/16, require a fixed spatial
+    input size.  ``resize_size`` lets the platform keep experiment artifacts at
+    their configured resolution while presenting the classifier with the size
+    expected by its architecture.
+    """
+
+    def __init__(self, model: nn.Module, resize_size: Optional[int] = None) -> None:
         super().__init__()
         self.model = model
+        self.resize_size = resize_size
         self.register_buffer(
             "mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
         )
@@ -29,6 +38,17 @@ class ImageNetNormalizeWrapper(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.resize_size is not None and x.shape[-2:] != (
+            self.resize_size,
+            self.resize_size,
+        ):
+            x = F.interpolate(
+                x,
+                size=(self.resize_size, self.resize_size),
+                mode="bilinear",
+                align_corners=False,
+                antialias=True,
+            )
         return self.model((x - self.mean) / self.std)
 
 
@@ -110,9 +130,10 @@ def load_vit_b_16(
         weights_enum = models.ViT_B_16_Weights.IMAGENET1K_V1
         model = models.vit_b_16(weights=None)
         model.load_state_dict(_load_state_dict_from_weights(weights_enum))
-        model = ImageNetNormalizeWrapper(model)
+        model = ImageNetNormalizeWrapper(model, resize_size=224)
     else:
         model = models.vit_b_16(weights=None)
+        model = ImageNetNormalizeWrapper(model, resize_size=224)
     return model.eval().to(device)
 
 

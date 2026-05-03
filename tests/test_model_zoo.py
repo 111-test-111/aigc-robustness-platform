@@ -119,6 +119,15 @@ def test_load_vit_b_16_output_shape():
     assert output.shape == (1, 1000)
 
 
+def test_load_vit_b_16_resizes_larger_inputs():
+    """ViT-B/16 wrapper should accept 512px experiment images."""
+    model = load_classifier("vit_b_16", weights="none")
+    x = torch.randn(1, 3, 512, 512)
+    with torch.no_grad():
+        output = model(x)
+    assert output.shape == (1, 1000)
+
+
 def test_load_densenet121_output_shape():
     """Verify DenseNet-121 produces correct logits shape for a (1, 3, 224, 224) input."""
     model = load_classifier("densenet121", weights="none")

@@ -29,7 +29,7 @@ attacks:
     strength: 0.7
     guidance_scale: 7.5
     num_candidates: 5
-    sd_batch_size: 8
+    sd_batch_size: 4
   # 定向：对抗样本必须被分类为指定的 target_class
   - name: diffusion
     backend: sd

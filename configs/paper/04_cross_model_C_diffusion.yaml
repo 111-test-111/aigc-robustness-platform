@@ -28,7 +28,7 @@ attacks:
     strength: 0.7
     guidance_scale: 7.5
     num_candidates: 5
-    sd_batch_size: 8
+    sd_batch_size: 4
 
 defenses:
   - name: jpeg
