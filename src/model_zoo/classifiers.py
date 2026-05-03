@@ -1,6 +1,7 @@
 """Classifier model loaders."""
 
 import os
+import re
 from urllib.parse import urlparse
 
 import torch
@@ -64,6 +65,27 @@ def load_torchvision_state_dict(filename: str) -> dict:
     )
 
 
+def _remap_legacy_densenet_state_dict(state_dict: dict) -> dict:
+    """Normalize old torchvision DenseNet checkpoint keys.
+
+    Official DenseNet checkpoints historically used keys like
+    ``denselayer1.norm.1.weight``.  Current torchvision modules use
+    ``denselayer1.norm1.weight``.  The public torchvision constructor applies
+    this remap internally; because this project loads checkpoints through a
+    custom mirror-aware path, we need the same compatibility step here.
+    """
+    pattern = re.compile(
+        r"^(.*denselayer\d+\.(?:norm|relu|conv))\.([12]\.(?:weight|bias|running_mean|running_var))$"
+    )
+    remapped = dict(state_dict)
+    for key in list(state_dict.keys()):
+        match = pattern.match(key)
+        if match is None:
+            continue
+        remapped[match.group(1) + match.group(2)] = remapped.pop(key)
+    return remapped
+
+
 @register("resnet50")
 def load_resnet50(
     weights: str = "imagenet",
@@ -102,7 +124,10 @@ def load_densenet121(
     if weights == "imagenet":
         weights_enum = models.DenseNet121_Weights.IMAGENET1K_V1
         model = models.densenet121(weights=None)
-        model.load_state_dict(_load_state_dict_from_weights(weights_enum))
+        state_dict = _remap_legacy_densenet_state_dict(
+            _load_state_dict_from_weights(weights_enum)
+        )
+        model.load_state_dict(state_dict)
         model = ImageNetNormalizeWrapper(model)
     else:
         model = models.densenet121(weights=None)

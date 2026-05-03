@@ -8,6 +8,7 @@ from src.model_zoo.classifiers import (
     DEFAULT_TORCHVISION_WEIGHTS_BASE_URL,
     get_torchvision_weights_base_url,
     get_torchvision_weights_url,
+    _remap_legacy_densenet_state_dict,
     load_torchvision_state_dict,
     load_classifier,
 )
@@ -59,6 +60,24 @@ def test_load_torchvision_state_dict_uses_mirror(monkeypatch):
     )
     assert calls["kwargs"]["file_name"] == "alexnet-owt-7be5be79.pth"
     assert calls["kwargs"]["check_hash"]
+
+
+def test_legacy_densenet_state_dict_keys_are_remapped():
+    """DenseNet checkpoints with old dotted keys should load on new modules."""
+    state_dict = {
+        "features.denseblock1.denselayer1.norm.1.weight": torch.ones(1),
+        "features.denseblock1.denselayer1.norm.1.bias": torch.zeros(1),
+        "features.denseblock1.denselayer1.conv.2.weight": torch.ones(1, 1, 1, 1),
+        "classifier.weight": torch.ones(1, 1),
+    }
+
+    remapped = _remap_legacy_densenet_state_dict(state_dict)
+
+    assert "features.denseblock1.denselayer1.norm1.weight" in remapped
+    assert "features.denseblock1.denselayer1.norm1.bias" in remapped
+    assert "features.denseblock1.denselayer1.conv2.weight" in remapped
+    assert "features.denseblock1.denselayer1.norm.1.weight" not in remapped
+    assert "classifier.weight" in remapped
 
 
 def test_load_classifier_resnet50():
