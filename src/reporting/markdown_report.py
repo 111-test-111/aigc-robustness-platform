@@ -64,6 +64,19 @@ def generate_report(experiment_dir: Path) -> Path:
     # Compute robustness score
     robustness_score = compute_robustness_score(metrics)
 
+    # Extract resource metrics (GPU memory, GPU utilisation, CPU memory)
+    resource_metric_keys = {
+        "gpu_mem_allocated_mb": "GPU 显存分配峰值 (MB)",
+        "gpu_mem_reserved_mb": "GPU 显存预留峰值 (MB)",
+        "cpu_rss_peak_mb": "CPU 内存 RSS 峰值 (MB)",
+        "gpu_util_pct_mean": "GPU 平均利用率 (%)",
+        "gpu_util_pct_peak": "GPU 峰值利用率 (%)",
+    }
+    resource_metrics: dict[str, str] = {}
+    for key, display in resource_metric_keys.items():
+        if key in metrics:
+            resource_metrics[display] = str(metrics[key])
+
     # Generate conclusions
     conclusions = _generate_conclusions(metrics, cfg)
 
@@ -96,6 +109,7 @@ def generate_report(experiment_dir: Path) -> Path:
         robustness_score=robustness_score,
         weights=DEFAULT_WEIGHTS,
         figures=figures,
+        resource_metrics=resource_metrics,
         conclusions=conclusions,
         timestamp=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     )

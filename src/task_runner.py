@@ -42,6 +42,7 @@ from src.reporting.charts import generate_metric_bars, generate_radar, generate_
 from src.reporting.markdown_report import generate_report
 from src.utils.device import get_device
 from src.utils.io import save_csv, save_json, save_structured_csv, snapshot_config
+from src.utils.resources import ResourceTracker
 from src.utils.seed import seed_everything
 
 logger = logging.getLogger(__name__)
@@ -545,6 +546,10 @@ def run_experiment(config_path: Path) -> Path:
     device = get_device(cfg.task.device)
     logger.info("Using device: %s", device)
 
+    # Start resource tracking (GPU memory, GPU utilisation, CPU memory)
+    tracker = ResourceTracker(device)
+    tracker.start()
+
     # ------------------------------------------------------------------
     # 3. Load data (shared across seeds — deterministic subset)
     # ------------------------------------------------------------------
@@ -614,7 +619,17 @@ def run_experiment(config_path: Path) -> Path:
         flat_metrics = dict(aggregated_metrics)
 
     # ------------------------------------------------------------------
-    # 8. Generate charts
+    # 8. Capture resource metrics
+    # ------------------------------------------------------------------
+    resource_metrics = tracker.stop()
+    flat_metrics.update(resource_metrics)
+    logger.info(
+        "Resource metrics: %s",
+        ", ".join(f"{k}={v}" for k, v in resource_metrics.items()),
+    )
+
+    # ------------------------------------------------------------------
+    # 9. Generate charts
     # ------------------------------------------------------------------
     if first_seed_attack_results:
         first_result, _ = first_seed_attack_results[0]
@@ -694,7 +709,7 @@ def run_experiment(config_path: Path) -> Path:
             )
 
     # ------------------------------------------------------------------
-    # 9. Persist metrics
+    # 10. Persist metrics
     # ------------------------------------------------------------------
     # Save per-seed metrics for transparency
     per_seed_data = {}
@@ -716,13 +731,13 @@ def run_experiment(config_path: Path) -> Path:
     logger.info("Saved metrics to %s (seeds=%d)", output_dir, len(seeds))
 
     # ------------------------------------------------------------------
-    # 10. Generate report
+    # 11. Generate report
     # ------------------------------------------------------------------
     report_path = generate_report(output_dir)
     logger.info("Generated report: %s", report_path)
 
     # ------------------------------------------------------------------
-    # 11. Release GPU memory before worker is reused (prevents fragmentation)
+    # 12. Release GPU memory before worker is reused (prevents fragmentation)
     # ------------------------------------------------------------------
     if device.type == "cuda":
         torch.cuda.empty_cache()

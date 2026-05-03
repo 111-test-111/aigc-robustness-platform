@@ -98,7 +98,23 @@
 > 权重: RA={{ weights.robust_accuracy }}, (1-ASR)={{ weights.inverse_asr }}, 语义质量={{ weights.semantic_quality }}, 干净保留={{ weights.clean_retention }}, 效率={{ weights.efficiency }}
 {% endif %}
 
-## 5. 可视化
+## 5. 资源消耗
+
+{% if resource_metrics %}
+| 指标 | 值 |
+|------|-----|
+{% for name, value in resource_metrics.items() -%}
+| {{ name }} | {{ value }} |
+{% endfor %}
+
+{% if resource_metrics.get('gpu_mem_reserved_mb', 0) > 0 %}
+> **并发估算**: 单实验 GPU 显存峰值约 {{ resource_metrics.gpu_mem_reserved_mb }} MB。在 80 GB GPU 上，安全并发数约为 {{ (80000 * 0.85 // resource_metrics.gpu_mem_reserved_mb) | int }}（留 15% 余量）。
+{% endif %}
+{% else %}
+暂无资源消耗数据。在 GPU 环境下运行实验以收集显存与利用率指标。
+{% endif %}
+
+## 6. 可视化
 
 {% if figures.sample_grid %}
 ### 样本对比
@@ -118,7 +134,7 @@
 ![指标柱状图](figures/metric_bars.png)
 {% endif %}
 
-## 6. 结论
+## 7. 结论
 
 {% for line in conclusions -%}
 - {{ line }}
