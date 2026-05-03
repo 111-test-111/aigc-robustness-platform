@@ -336,19 +336,16 @@ def _prewarm_fid_weights() -> None:
     """Download and verify the Inception weights used by torchmetrics FID."""
     import torch
 
-    weights_url = (
-        "https://github.com/toshas/torch-fidelity/releases/download/v0.2.0/"
-        "weights-inception-2015-12-05-6726825d.pth"
+    from src.evaluation.quality_metrics import (
+        get_fid_inception_weights_url,
+        predownload_fid_inception_weights,
     )
 
     # torchmetrics delegates to torch-fidelity, whose Inception weights live
     # in torch.hub's checkpoint cache. Download that exact file up front so
     # workers do not race on GitHub during the first FID computation.
-    torch.hub.load_state_dict_from_url(
-        weights_url,
-        map_location="cpu",
-        progress=True,
-    )
+    logger.info("Using FID Inception weights URL: %s", get_fid_inception_weights_url())
+    predownload_fid_inception_weights(progress=True)
 
     from torchmetrics.image.fid import FrechetInceptionDistance
 

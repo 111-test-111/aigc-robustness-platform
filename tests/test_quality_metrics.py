@@ -63,7 +63,11 @@ class TestComputeLpips:
 # ---------------------------------------------------------------------------
 
 try:
-    from src.evaluation.quality_metrics import compute_fid
+    from src.evaluation.quality_metrics import (
+        DEFAULT_FID_INCEPTION_WEIGHTS_URL,
+        get_fid_inception_weights_url,
+        compute_fid,
+    )
 
     _fid_available = True
 except ImportError:
@@ -75,6 +79,20 @@ fid_required = pytest.mark.skipif(
 
 
 class TestComputeFid:
+    def test_fid_weights_url_defaults_to_github(self, monkeypatch) -> None:
+        """FID weights use the official URL unless a mirror is configured."""
+        monkeypatch.delenv("AIGC_FID_WEIGHTS_URL", raising=False)
+        assert get_fid_inception_weights_url() == DEFAULT_FID_INCEPTION_WEIGHTS_URL
+
+    def test_fid_weights_url_can_use_mirror(self, monkeypatch) -> None:
+        """Server deployments can route FID weights through a mirror URL."""
+        mirror = (
+            "https://mirror.example/https://github.com/toshas/torch-fidelity/"
+            "releases/download/v0.2.0/weights-inception-2015-12-05-6726825d.pth"
+        )
+        monkeypatch.setenv("AIGC_FID_WEIGHTS_URL", mirror)
+        assert get_fid_inception_weights_url() == mirror
+
     @fid_required
     def test_fid_same_distribution(self) -> None:
         """Same images should have low FID (near zero, within float tolerance)."""

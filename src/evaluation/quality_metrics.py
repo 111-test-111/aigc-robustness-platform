@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import os
+
 import torch
 
 _lpips_fn: torch.nn.Module | None = None
 _lpips_device: torch.device | None = None
 _clip_model = None
 _clip_processor = None
+FID_WEIGHTS_URL_ENV = "AIGC_FID_WEIGHTS_URL"
+FID_INCEPTION_WEIGHTS_FILENAME = "weights-inception-2015-12-05-6726825d.pth"
+DEFAULT_FID_INCEPTION_WEIGHTS_URL = (
+    "https://github.com/toshas/torch-fidelity/releases/download/v0.2.0/"
+    f"{FID_INCEPTION_WEIGHTS_FILENAME}"
+)
 
 
 def _get_lpips(device: torch.device) -> torch.nn.Module:
@@ -61,6 +69,23 @@ def compute_lpips(clean: torch.Tensor, adversarial: torch.Tensor) -> float:
     return float(distances.mean().item())
 
 
+def get_fid_inception_weights_url() -> str:
+    """Return the FID Inception weights URL, allowing mirror override."""
+    return os.environ.get(FID_WEIGHTS_URL_ENV, "").strip() or (
+        DEFAULT_FID_INCEPTION_WEIGHTS_URL
+    )
+
+
+def predownload_fid_inception_weights(progress: bool = True) -> None:
+    """Download torch-fidelity's Inception weights into torch.hub cache."""
+    torch.hub.load_state_dict_from_url(
+        get_fid_inception_weights_url(),
+        map_location="cpu",
+        progress=progress,
+        file_name=FID_INCEPTION_WEIGHTS_FILENAME,
+    )
+
+
 def compute_fid(real_images: torch.Tensor, generated_images: torch.Tensor) -> float:
     """Compute Frechet Inception Distance between real and generated images.
 
@@ -81,6 +106,8 @@ def compute_fid(real_images: torch.Tensor, generated_images: torch.Tensor) -> fl
         raise ImportError(
             "torchmetrics[image] required. Install: pip install 'torchmetrics[image]'"
         )
+
+    predownload_fid_inception_weights(progress=False)
 
     n = real_images.shape[0]
     if n < 50:
