@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend
 
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -17,14 +18,48 @@ logger = logging.getLogger(__name__)
 # Configure matplotlib once
 _FONT_CONFIGURED = False
 
+# 宋体 fallback chain across platforms
+_SONGTI_CANDIDATES = [
+    "SimSong",
+    "Songti SC",
+    "STSong",
+    "SimSun",
+    "Songti TC",
+    "STFangsong",
+    "Noto Serif CJK SC",
+    "WenQuanYi Zen Hei",
+]
+
 
 def _configure_plot_font() -> None:
-    """Configure matplotlib defaults for stable chart rendering."""
+    """Configure matplotlib for Chinese (宋体) chart rendering."""
     global _FONT_CONFIGURED
     if _FONT_CONFIGURED:
         return
+
+    font_path = None
+    for name in _SONGTI_CANDIDATES:
+        for f in fm.fontManager.ttflist:
+            if f.name == name and any(
+                tag in f.fname.lower() for tag in ["song", "simsun", "st", "cjk"]
+            ):
+                font_path = f.fname
+                break
+        if font_path:
+            break
+
+    if font_path:
+        fm.fontManager.addfont(font_path)
+        prop = fm.FontProperties(fname=font_path)
+        plt.rcParams["font.family"] = prop.get_name()
+        logger.debug("Using Chinese font: %s (%s)", prop.get_name(), font_path)
+    else:
+        plt.rcParams["font.sans-serif"] = _SONGTI_CANDIDATES + list(
+            plt.rcParams.get("font.sans-serif", [])
+        )
+        logger.debug("No 宋体 found; using sans-serif fallback chain")
+
     plt.rcParams["axes.unicode_minus"] = False
-    logger.debug("Matplotlib plot font configuration initialized")
     _FONT_CONFIGURED = True
 
 
@@ -36,7 +71,7 @@ def generate_sample_grid(
     metrics: dict | None = None,
     save_path: Path | str = "sample_grid.png",
     max_samples: int = 8,
-    title: str = "Sample Comparison",
+    title: str = "样本对比",
 ) -> Path:
     """Generate a grid comparing clean, adversarial, and optionally defended samples.
 
@@ -65,7 +100,7 @@ def generate_sample_grid(
     if n == 1:
         axes = axes.reshape(1, -1)
 
-    col_titles = ["Clean", "Adversarial"] + (["Defended"] if has_defended else [])
+    col_titles = ["原始图像", "对抗样本"] + (["防御后"] if has_defended else [])
     for j, t in enumerate(col_titles):
         axes[0, j].set_title(t, fontsize=14, fontweight="bold")
 
@@ -98,7 +133,7 @@ def generate_metric_bars(
     metrics_list: list[dict],
     labels: list[str],
     save_path: Path | str = "metric_bars.png",
-    title: str = "Metric Comparison",
+    title: str = "指标对比",
     stds_list: list[dict] | None = None,
 ) -> Path:
     """Generate grouped bar chart comparing metrics across methods.
@@ -136,7 +171,7 @@ def generate_metric_bars(
 
     ax.set_xticks(x + width * (len(metrics_list) - 1) / 2)
     ax.set_xticklabels(metric_names, rotation=45, ha="right")
-    ax.set_ylabel("Value")
+    ax.set_ylabel("数值")
     ax.set_title(title, fontweight="bold")
     ax.legend()
     ax.grid(axis="y", alpha=0.3)
@@ -151,7 +186,7 @@ def generate_metric_bars(
 def generate_radar(
     metrics: dict[str, float],
     save_path: Path | str = "radar.png",
-    title: str = "Robustness Radar",
+    title: str = "鲁棒性雷达图",
 ) -> Path:
     """Generate radar chart for multi-dimensional metrics.
 

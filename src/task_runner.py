@@ -679,7 +679,7 @@ def run_experiment(config_path: Path) -> Path:
                     bar_metrics_list,
                     bar_labels,
                     save_path=bars_path,
-                    title="Attack Method Comparison",
+                    title="攻击方法对比",
                     stds_list=bar_stds_list if has_any_std else None,
                 )
 
@@ -690,7 +690,7 @@ def run_experiment(config_path: Path) -> Path:
             generate_radar(
                 radar_metrics,
                 save_path=radar_path,
-                title="Robustness Radar",
+                title="鲁棒性雷达图",
             )
 
     # ------------------------------------------------------------------
@@ -782,42 +782,42 @@ def _build_radar_metrics(metrics: dict[str, float]) -> dict[str, float]:
             if _is_value(k, "_untargeted_asr") and isinstance(v, (int, float))
         ]
     if asr_values:
-        radar["attack_resistance"] = _clamp01(1.0 - max(asr_values))
+        radar["攻击抵抗力"] = _clamp01(1.0 - max(asr_values))
 
     robust_values = [
         float(v) for k, v in metrics.items()
         if _is_value(k, "_robust_accuracy") and isinstance(v, (int, float))
     ]
     if robust_values:
-        radar["robust_accuracy"] = _clamp01(max(robust_values))
+        radar["鲁棒准确率"] = _clamp01(max(robust_values))
 
     drop_values = [
         float(v) for k, v in metrics.items()
         if _is_value(k, "_clean_accuracy_drop") and isinstance(v, (int, float))
     ]
     if drop_values:
-        radar["clean_retention"] = _clamp01(1.0 - max(drop_values))
+        radar["原始精度保持"] = _clamp01(1.0 - max(drop_values))
 
     lpips_values = [
         float(v) for k, v in metrics.items()
         if _is_value(k, "_lpips") and isinstance(v, (int, float))
     ]
     if lpips_values:
-        radar["perceptual_similarity"] = _clamp01(1.0 - min(lpips_values))
+        radar["感知相似度"] = _clamp01(1.0 - min(lpips_values))
 
     clip_values = [
         float(v) for k, v in metrics.items()
         if _is_value(k, "_clip_score") and isinstance(v, (int, float))
     ]
     if clip_values:
-        radar["semantic_alignment"] = _clamp01(max(clip_values))
+        radar["语义对齐度"] = _clamp01(max(clip_values))
 
     latency_values = [
         float(v) for k, v in metrics.items()
         if _is_value(k, "_latency_mean") and isinstance(v, (int, float))
     ]
     if latency_values:
-        radar["efficiency"] = _clamp01(1.0 - min(latency_values) / 10.0)
+        radar["效率"] = _clamp01(1.0 - min(latency_values) / 10.0)
 
     return radar
 
