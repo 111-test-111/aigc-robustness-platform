@@ -144,7 +144,11 @@ def _setup_worker_env() -> None:
     import warnings
 
     # transformers: Siglip2ImageProcessorFast → Siglip2ImageProcessor
+    # transformers: safetensors missing → falling back to pickle
     warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+    warnings.filterwarnings("ignore", category=DeprecationWarning, module="transformers")
+    warnings.filterwarnings("ignore", message=".*allow_pickle.*")
+    warnings.filterwarnings("ignore", message=".*unsafe serialization.*")
     # huggingface_hub: local_dir_use_symlinks is deprecated and ignored
     warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
     # torchvision: lpips uses deprecated pretrained=True for AlexNet
