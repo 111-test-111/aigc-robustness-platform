@@ -991,7 +991,7 @@ def _generate_comparison(report_dirs: list[Path], comp_dir: Path) -> None:
             all_metrics,
             labels,
             save_path=comp_dir / "figures" / "comparison_bars.png",
-            title="Experiment Comparison",
+            title="实验对比",
         )
 
     for i, (metrics, label) in enumerate(zip(all_metrics, labels)):
@@ -1000,7 +1000,7 @@ def _generate_comparison(report_dirs: list[Path], comp_dir: Path) -> None:
             generate_radar(
                 radar_metrics,
                 save_path=comp_dir / "figures" / f"radar_{label}.png",
-                title=f"{label} Robustness",
+                title=f"{label} 鲁棒性雷达图",
             )
 
     _generate_comparison_report(all_metrics, all_structured, labels, comp_dir)

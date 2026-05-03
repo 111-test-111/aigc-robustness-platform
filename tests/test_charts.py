@@ -57,6 +57,16 @@ def test_generate_metric_bars(tmp_path: Path) -> None:
     assert path.stat().st_size > 0
 
 
+def test_chart_metric_labels_are_chinese() -> None:
+    """Internal metric keys are rendered with Chinese chart labels."""
+    from src.reporting.charts import _display_metric_name, _display_series_label
+
+    assert _display_metric_name("clean_accuracy") == "干净准确率"
+    assert _display_metric_name("fgsm_clean_accuracy") == "FGSM 干净准确率"
+    assert _display_metric_name("diffusion_clip_score_mean") == "扩散攻击 CLIP 语义分数"
+    assert _display_series_label("diffusion_purification") == "扩散净化"
+
+
 def test_generate_metric_bars_empty(tmp_path: Path) -> None:
     """Empty metrics list returns path without crashing."""
     from src.reporting.charts import generate_metric_bars

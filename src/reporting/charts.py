@@ -32,6 +32,42 @@ _SONGTI_CANDIDATES = [
     "WenQuanYi Zen Hei",
 ]
 
+_METRIC_DISPLAY_NAMES = {
+    "asr": "攻击成功率",
+    "asr_on_clean_correct": "干净正确样本攻击成功率",
+    "prediction_change_rate": "预测变化率",
+    "clean_accuracy": "干净准确率",
+    "adversarial_accuracy": "对抗准确率",
+    "robust_accuracy": "鲁棒准确率",
+    "clean_accuracy_drop": "干净准确率下降",
+    "clean_defended_accuracy": "干净防御准确率",
+    "lpips": "感知距离",
+    "fid": "FID 距离",
+    "clip_score": "CLIP 语义分数",
+    "queries": "查询次数",
+    "queries_mean": "平均查询次数",
+    "queries_median": "查询次数中位数",
+    "queries_max": "最大查询次数",
+    "latency": "延迟",
+    "latency_mean": "平均延迟",
+    "gpu_mem_allocated_mb": "GPU 显存分配峰值",
+    "gpu_mem_reserved_mb": "GPU 显存预留峰值",
+    "cpu_rss_peak_mb": "CPU 内存峰值",
+    "gpu_util_pct_mean": "GPU 平均利用率",
+    "gpu_util_pct_peak": "GPU 峰值利用率",
+}
+
+_METHOD_DISPLAY_NAMES = {
+    "fgsm": "FGSM",
+    "pgd": "PGD",
+    "advgan": "AdvGAN",
+    "diffusion": "扩散攻击",
+    "jpeg": "JPEG 防御",
+    "gaussian_blur": "高斯模糊",
+    "bit_depth": "位深压缩",
+    "diffusion_purification": "扩散净化",
+}
+
 
 def _configure_plot_font() -> None:
     """Configure matplotlib for Chinese (宋体) chart rendering."""
@@ -63,6 +99,29 @@ def _configure_plot_font() -> None:
 
     plt.rcParams["axes.unicode_minus"] = False
     _FONT_CONFIGURED = True
+
+
+def _display_metric_name(name: str) -> str:
+    """Return a Chinese display name for chart metric labels."""
+    clean = name.removesuffix("_mean").removesuffix("_std")
+    if clean in _METRIC_DISPLAY_NAMES:
+        return _METRIC_DISPLAY_NAMES[clean]
+
+    for suffix, display in sorted(
+        _METRIC_DISPLAY_NAMES.items(), key=lambda item: len(item[0]), reverse=True
+    ):
+        token = f"_{suffix}"
+        if clean.endswith(token):
+            prefix = clean.removesuffix(token)
+            method = _METHOD_DISPLAY_NAMES.get(prefix, prefix)
+            return f"{method} {display}"
+
+    return name.replace("_", " ")
+
+
+def _display_series_label(label: str) -> str:
+    """Return a Chinese-friendly display name for chart series labels."""
+    return _METHOD_DISPLAY_NAMES.get(label, label.replace("_", " "))
 
 
 def generate_sample_grid(
@@ -158,6 +217,7 @@ def generate_metric_bars(
         return save_path
 
     metric_names = list(metrics_list[0].keys())
+    metric_labels = [_display_metric_name(name) for name in metric_names]
     x = np.arange(len(metric_names))
     width = 0.8 / len(metrics_list)
 
@@ -168,11 +228,11 @@ def generate_metric_bars(
         stds = None
         if stds_list and i < len(stds_list) and stds_list[i]:
             stds = [stds_list[i].get(m, 0) for m in metric_names]
-        ax.bar(x + i * width, values, width, label=label,
+        ax.bar(x + i * width, values, width, label=_display_series_label(label),
                yerr=stds, capsize=3, error_kw={"linewidth": 1})
 
     ax.set_xticks(x + width * (len(metrics_list) - 1) / 2)
-    ax.set_xticklabels(metric_names, rotation=45, ha="right")
+    ax.set_xticklabels(metric_labels, rotation=45, ha="right")
     ax.set_ylabel("数值")
     ax.set_title(title, fontweight="bold")
     ax.legend()
@@ -204,7 +264,7 @@ def generate_radar(
     save_path.parent.mkdir(parents=True, exist_ok=True)
     _configure_plot_font()
 
-    categories = list(metrics.keys())
+    categories = [_display_metric_name(name) for name in metrics.keys()]
     values = list(metrics.values())
     n = len(categories)
 
