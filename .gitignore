@@ -31,3 +31,4 @@ reports/*
 *.pt
 *.pth
 *.onnx
+data.zip

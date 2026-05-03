@@ -1,0 +1,59 @@
+# ViT-B/16 — 传统攻击 × 传统防御（无 SD，Phase 2）
+# 原始 vit_b_16_baseline 的 Part A: 3 attacks × 3 defenses = 9 combos
+task:
+  name: vit_b_16_traditional
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: vit_b_16
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+  - name: pgd
+    eps: 0.03
+    alpha: 0.007
+    steps: 20
+  - name: advgan
+    eps: 0.03
+    epochs: 50
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/vit_b_16_baseline/traditional
+  formats:
+    - markdown

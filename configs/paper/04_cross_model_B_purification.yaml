@@ -1,0 +1,57 @@
+# 跨模型鲁棒性 (ResNet50) — 传统攻击 × SD 净化防御（Phase 1）
+# 原始 04_cross_model_robustness 的 Part B: 3 attacks × 1 defense = 3 combos
+task:
+  name: cross_model_purification
+  seeds: [42, 123, 456, 789, 1024]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: fgsm
+    eps: 0.03
+  - name: pgd
+    eps: 0.03
+    alpha: 0.007
+    steps: 20
+  - name: advgan
+    eps: 0.03
+    epochs: 50
+
+defenses:
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 50
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/cross_model_robustness/purification
+  formats:
+    - markdown
