@@ -68,13 +68,21 @@ def compute_lpips(clean: torch.Tensor, adversarial: torch.Tensor) -> float:
         more perceptually different.
     """
     device = clean.device
-    clean_scaled = clean * 2 - 1
-    adv_scaled = adversarial * 2 - 1
-
     fn = _get_lpips(device)
+    batch_size = max(1, int(os.environ.get("AIGC_LPIPS_BATCH_SIZE", "16")))
+    distances_by_chunk: list[torch.Tensor] = []
+
     with torch.no_grad():
-        distances = fn(clean_scaled.to(device), adv_scaled.to(device))
-    return float(distances.mean().item())
+        for start in range(0, clean.shape[0], batch_size):
+            end = min(start + batch_size, clean.shape[0])
+            clean_scaled = clean[start:end] * 2 - 1
+            adv_scaled = adversarial[start:end] * 2 - 1
+            distances = fn(clean_scaled.to(device), adv_scaled.to(device))
+            distances_by_chunk.append(distances.detach().cpu().flatten())
+
+    if not distances_by_chunk:
+        return 0.0
+    return float(torch.cat(distances_by_chunk).mean().item())
 
 
 def get_fid_inception_weights_url() -> str:
@@ -130,16 +138,30 @@ def compute_fid(real_images: torch.Tensor, generated_images: torch.Tensor) -> fl
     # Keep metric and inputs on the same device to avoid CPU/GPU mismatch.
     device = real_images.device
 
-    # torchmetrics FID expects uint8 images [0, 255]
-    real_uint8 = (real_images.clamp(0, 1) * 255).to(device=device, dtype=torch.uint8)
-    gen_uint8 = (generated_images.clamp(0, 1) * 255).to(
-        device=device, dtype=torch.uint8
-    )
-
     fid = FrechetInceptionDistance(feature=64).to(device)  # smaller feature dim for speed
-    fid.update(real_uint8, real=True)
-    fid.update(gen_uint8, real=False)
-    return float(fid.compute().item())
+    batch_size = max(1, int(os.environ.get("AIGC_FID_BATCH_SIZE", "16")))
+
+    # torchmetrics FID expects uint8 images [0, 255]. Feed it in chunks so
+    # high-resolution experiments do not materialize the full uint8 copy plus
+    # Inception activations at once.
+    for start in range(0, n, batch_size):
+        end = min(start + batch_size, n)
+        real_uint8 = (real_images[start:end].clamp(0, 1) * 255).to(
+            device=device,
+            dtype=torch.uint8,
+        )
+        gen_uint8 = (generated_images[start:end].clamp(0, 1) * 255).to(
+            device=device,
+            dtype=torch.uint8,
+        )
+        fid.update(real_uint8, real=True)
+        fid.update(gen_uint8, real=False)
+
+    score = float(fid.compute().item())
+    del fid
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    return score
 
 
 def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
@@ -179,7 +201,7 @@ def compute_clip_score(images: torch.Tensor, prompt: str) -> float:
         model.eval()
         _clip_device = device
 
-    batch_size = max(1, int(os.environ.get("AIGC_CLIP_BATCH_SIZE", "32")))
+    batch_size = max(1, int(os.environ.get("AIGC_CLIP_BATCH_SIZE", "16")))
     scores: list[torch.Tensor] = []
 
     with torch.no_grad():

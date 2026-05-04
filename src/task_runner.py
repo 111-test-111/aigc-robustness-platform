@@ -31,11 +31,7 @@ from src.defense_engine.blur import GaussianBlurDefense
 from src.defense_engine.diffusion_purification import DiffusionPurificationDefense
 from src.defense_engine.jpeg import JPEGDefense
 from src.evaluation.attack_metrics import compute_asr, compute_queries
-from src.evaluation.defense_metrics import (
-    compute_clean_accuracy_drop,
-    compute_latency,
-    compute_robust_accuracy,
-)
+from src.evaluation.defense_metrics import compute_latency
 from src.evaluation.quality_metrics import compute_clip_score, compute_lpips
 from src.model_zoo.classifiers import load_classifier
 from src.reporting.charts import generate_metric_bars, generate_radar, generate_sample_grid
@@ -255,6 +251,145 @@ def _build_attack_defense_instances(
     return attack_methods, defense_methods
 
 
+def _resolve_eval_batch_size(cfg: DictConfig, total: int) -> int:
+    """Return the batch size used for GPU-heavy attack/evaluation work."""
+    configured = cfg.dataset.get(
+        "eval_batch_size",
+        cfg.dataset.get("batch_size", total),
+    )
+    return max(1, int(configured))
+
+
+def _batched_ranges(total: int, batch_size: int):
+    """Yield ``(start, end)`` ranges covering ``total`` items."""
+    for start in range(0, total, batch_size):
+        yield start, min(start + batch_size, total)
+
+
+def _empty_cuda_cache_for(tensor: torch.Tensor) -> None:
+    if tensor.device.type == "cuda":
+        torch.cuda.empty_cache()
+
+
+def _merge_chunk_metadata(metadata_items: list[dict]) -> dict:
+    """Merge per-chunk metadata into one compact experiment-level record."""
+    if not metadata_items:
+        return {}
+
+    merged = dict(metadata_items[0])
+    merged["num_chunks"] = len(metadata_items)
+
+    elapsed_values = [
+        item.get("elapsed_sec")
+        for item in metadata_items
+        if isinstance(item.get("elapsed_sec"), (int, float))
+    ]
+    if elapsed_values:
+        merged["elapsed_sec"] = round(float(sum(elapsed_values)), 4)
+
+    chunk_latencies = [
+        item.get("latency_sec")
+        for item in metadata_items
+        if isinstance(item.get("latency_sec"), (int, float))
+    ]
+    if chunk_latencies:
+        merged["latency_sec"] = float(sum(chunk_latencies))
+
+    return merged
+
+
+def _generate_attack_batched(
+    attack: Attack,
+    clean: torch.Tensor,
+    labels: torch.Tensor,
+    model: torch.nn.Module,
+    attack_cfg: dict,
+    batch_size: int,
+) -> AttackResult:
+    """Generate adversarial examples in mini-batches to cap autograd memory."""
+    if clean.shape[0] <= batch_size:
+        return attack.generate(clean, labels, model, attack_cfg)
+
+    adversarial_chunks: list[torch.Tensor] = []
+    success_chunks: list[torch.Tensor] = []
+    queries: list[int] = []
+    metadata_items: list[dict] = []
+
+    for start, end in _batched_ranges(clean.shape[0], batch_size):
+        result = attack.generate(
+            clean[start:end],
+            labels[start:end],
+            model,
+            attack_cfg,
+        )
+        adversarial_chunks.append(result.adversarial.detach())
+        success_chunks.append(result.success.detach())
+        queries.extend(result.queries)
+        metadata_items.append(result.metadata)
+        _empty_cuda_cache_for(clean)
+
+    return AttackResult(
+        adversarial=torch.cat(adversarial_chunks, dim=0),
+        success=torch.cat(success_chunks, dim=0),
+        queries=queries,
+        metadata=_merge_chunk_metadata(metadata_items),
+    )
+
+
+def _apply_defense_batched(
+    defense: Defense,
+    images: torch.Tensor,
+    defense_cfg: dict,
+    batch_size: int,
+) -> DefenseResult:
+    """Apply a defense in mini-batches and concatenate the defended images."""
+    if images.shape[0] <= batch_size:
+        return defense.apply(images, defense_cfg)
+
+    defended_chunks: list[torch.Tensor] = []
+    metadata_items: list[dict] = []
+    total_latency = 0.0
+
+    for start, end in _batched_ranges(images.shape[0], batch_size):
+        result = defense.apply(images[start:end], defense_cfg)
+        defended_chunks.append(result.defended.detach())
+        total_latency += float(result.latency_sec)
+        metadata = dict(result.metadata)
+        metadata["latency_sec"] = float(result.latency_sec)
+        metadata_items.append(metadata)
+        _empty_cuda_cache_for(images)
+
+    return DefenseResult(
+        defended=torch.cat(defended_chunks, dim=0),
+        latency_sec=total_latency,
+        metadata=_merge_chunk_metadata(metadata_items),
+    )
+
+
+def _predict_batched(
+    model: torch.nn.Module,
+    images: torch.Tensor,
+    batch_size: int,
+) -> torch.Tensor:
+    """Run classifier inference in mini-batches."""
+    preds: list[torch.Tensor] = []
+    model.eval()
+    with torch.no_grad():
+        for start, end in _batched_ranges(images.shape[0], batch_size):
+            preds.append(model(images[start:end]).argmax(dim=1))
+    return torch.cat(preds, dim=0)
+
+
+def _accuracy_batched(
+    model: torch.nn.Module,
+    images: torch.Tensor,
+    labels: torch.Tensor,
+    batch_size: int,
+) -> float:
+    preds = _predict_batched(model, images, batch_size)
+    return float((preds == labels).float().mean().item())
+
+
 def _run_attack_defense_pipeline(
     cfg: DictConfig,
     clean: torch.Tensor,
@@ -283,6 +418,7 @@ def _run_attack_defense_pipeline(
     seed_everything(seed)
 
     attack_methods, defense_methods = _build_attack_defense_instances(cfg)
+    eval_batch_size = _resolve_eval_batch_size(cfg, clean.shape[0])
 
     all_metrics: dict[str, float] = {}
     structured_attacks: dict[str, dict] = {}
@@ -296,8 +432,16 @@ def _run_attack_defense_pipeline(
             continue
 
         logger.info("Running attack: %s (seed=%d)", attack.name, seed)
-        result: AttackResult = attack.generate(clean, labels, model, attack_cfg)
-        attack_results.append((result, attack_cfg))
+        result = _generate_attack_batched(
+            attack,
+            clean,
+            labels,
+            model,
+            attack_cfg,
+            eval_batch_size,
+        )
+        if save_samples and not attack_results:
+            attack_results.append((result, attack_cfg))
 
         # Attack-level metrics
         result_success_rate = compute_asr(result.success)
@@ -307,9 +451,8 @@ def _run_attack_defense_pipeline(
             all_metrics[f"{attack.name}_queries_{k}"] = float(v)
 
         # Extended attack metrics
-        with torch.no_grad():
-            clean_pred = model(clean).argmax(dim=1)
-            adv_pred = model(result.adversarial).argmax(dim=1)
+        clean_pred = _predict_batched(model, clean, eval_batch_size)
+        adv_pred = _predict_batched(model, result.adversarial, eval_batch_size)
         clean_correct = clean_pred == labels
         adv_correct = adv_pred == labels
         clean_accuracy = float((clean_pred == labels).float().mean().item())
@@ -378,11 +521,27 @@ def _run_attack_defense_pipeline(
 
         for defense, defense_cfg in defense_methods:
             logger.info("  Applying defense: %s (seed=%d)", defense.name, seed)
-            d_result: DefenseResult = defense.apply(result.adversarial, defense_cfg)
-            d_clean_result = defense.apply(clean, defense_cfg)
+            d_result = _apply_defense_batched(
+                defense,
+                result.adversarial,
+                defense_cfg,
+                eval_batch_size,
+            )
+            d_clean_result = _apply_defense_batched(
+                defense,
+                clean,
+                defense_cfg,
+                eval_batch_size,
+            )
 
-            ra = compute_robust_accuracy(model, d_result.defended, labels)
-            cad = compute_clean_accuracy_drop(model, clean, d_clean_result.defended, labels)
+            ra = _accuracy_batched(model, d_result.defended, labels, eval_batch_size)
+            clean_defended_acc = _accuracy_batched(
+                model,
+                d_clean_result.defended,
+                labels,
+                eval_batch_size,
+            )
+            cad = float(clean_accuracy - clean_defended_acc)
             lat = compute_latency([d_result.latency_sec])
             clean_lat = compute_latency([d_clean_result.latency_sec])
 
@@ -391,7 +550,6 @@ def _run_attack_defense_pipeline(
             all_metrics[f"{prefix}_clean_accuracy_drop"] = cad
             all_metrics[f"{prefix}_latency_mean"] = lat["mean"]
 
-            clean_defended_acc = compute_robust_accuracy(model, d_clean_result.defended, labels)
             all_metrics[f"{prefix}_clean_defended_accuracy"] = clean_defended_acc
             all_metrics[f"{prefix}_clean_latency_mean"] = clean_lat["mean"]
 
@@ -414,6 +572,12 @@ def _run_attack_defense_pipeline(
                 pur_dir = output_dir / "samples" / "purified" / f"{attack.name}_{defense.name}"
                 pur_dir.mkdir(parents=True, exist_ok=True)
                 _save_sample_pngs(d_result.defended, pur_dir, labels)
+            del d_result, d_clean_result
+            _empty_cuda_cache_for(clean)
+
+        if not attack_results or attack_results[0][0] is not result:
+            del result
+            _empty_cuda_cache_for(clean)
 
     return all_metrics, structured_attacks, structured_defenses, attack_results
 
