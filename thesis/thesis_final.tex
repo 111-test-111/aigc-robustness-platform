@@ -1,0 +1,2094 @@
+% !TEX program = xelatex
+\documentclass[type=bachelor,oneside]{fduthesis}
+
+% ========== Additional Packages ==========
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{mathtools}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\usepackage{subcaption}
+\usepackage[export]{adjustbox}
+\usepackage{needspace}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{pgfplotstable}
+\usetikzlibrary{arrows.meta,positioning,fit,calc,shapes.geometric,backgrounds,matrix,
+  shadows.blur,decorations.markings,patterns,fadings}
+\usepgfplotslibrary{groupplots,polar,colormaps,fillbetween}
+\pgfplotsset{compat=1.18}
+
+\tikzset{
+  fancy module/.style={
+    draw=#1!60, fill=#1!8,
+    minimum width=2.4cm, minimum height=0.95cm, align=center,
+    rounded corners=3pt, font=\figmainfont,
+    blur shadow={shadow blur steps=6, shadow xshift=0.6pt, shadow yshift=-0.6pt,
+                 shadow blur radius=1.5pt, shadow opacity=18},
+  },
+  fancy layer/.style={
+    draw=#1!40, fill=#1!4,
+    rounded corners=6pt, inner sep=12pt,
+  },
+  flow arrow/.style={
+    ->, line width=0.9pt, draw=pgfgray!80,
+    >={Stealth[length=5pt, width=3.5pt]},
+  },
+  data arrow/.style={
+    ->, line width=0.7pt, draw=pgfgray!55, dashed,
+    >={Stealth[length=4pt, width=3pt]},
+  },
+  step number/.style={
+    circle, fill=#1!65, text=white, font=\bfseries\figsubfont,
+    minimum size=14pt, inner sep=0pt,
+  },
+  annotation box/.style={
+    draw=pgfgray!40, fill=yellow!6, rounded corners=2pt,
+    font=\figsubfont, inner sep=3pt, align=center,
+  },
+}
+\setlength{\emergencystretch}{3em}
+
+% ========== fduthesis Setup ==========
+\fdusetup{
+  style = {
+    cjk-font = mac,
+    font = times,
+    font-size = -4,
+    fullwidth-stop = false,
+    footnote-style = xits,
+    hyperlink = color,
+    hyperlink-color = default,
+    bib-backend = bibtex,
+    bib-style = numerical,
+    bib-resource = {references.bib},
+    auto-make-cover = true,
+  },
+  info = {
+    title = {面向AIGC的扩散式无限制对抗样本\\生成与评估方法研究},
+    title* = {Diffusion-based Unrestricted Adversarial Example\\Generation and Evaluation for AIGC},
+    author = {蒋超逸},
+    author* = {Jiang Chaoyi},
+    supervisor = {赵卫东},
+    department = {计算与智能创新学院},
+    major = {保密技术},
+    student-id = {22307130047},
+    date = {2026 年 5 月},
+    secret-level = none,
+    keywords = {对抗样本, AIGC 安全, 扩散模型, 无限制攻击, 鲁棒性评估},
+    keywords* = {Adversarial Examples, AIGC Security, Diffusion Models, Unrestricted Attack, Robustness Evaluation},
+    clc = {TP391.41},
+  },
+}
+
+% ========== Code Listing Style ==========
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{codeframe}{RGB}{210,210,210}
+
+\lstdefinestyle{papercode}{
+  basicstyle=\ttfamily\codefont,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  frame=single,
+  rulecolor=\color{codeframe},
+  backgroundcolor=\color{codebg}
+}
+\lstset{style=papercode}
+
+% ========== Custom Commands ==========
+\newcommand{\eg}{\textit{e.g.}}
+\newcommand{\ie}{\textit{i.e.}}
+\newcommand{\etal}{\textit{et~al.}}
+\newcommand{\modelname}{\textsc{AigcRobust}}
+\newcommand{\methodname}{\textsc{DiffSearch}}
+\newcommand{\platformname}{AIGC无限制对抗样本攻防验证平台}
+\newcommand{\best}[1]{\textbf{#1}}
+\newcommand{\indicator}[1]{\operatorname{Ind}\!\left[#1\right]}
+\newcommand{\tablefont}{\small}
+\newcommand{\codefont}{\small}
+\newcommand{\figmainfont}{\small}
+\newcommand{\figsubfont}{\scriptsize}
+\newcommand{\figmicrofont}{\scriptsize}
+\newcommand{\safeincludegraphics}[2][]{%
+  \includegraphics[
+    max width=0.88\linewidth,
+    max height=0.66\textheight,
+    keepaspectratio,
+    #1
+  ]{#2}%
+}
+
+% ========== Native PGFPlots/TikZ Figures ==========
+\definecolor{pgfblue}{RGB}{49,112,181}
+\definecolor{pgforange}{RGB}{230,126,34}
+\definecolor{pgfgreen}{RGB}{46,160,67}
+\definecolor{pgfdarkgreen}{RGB}{0,100,55}
+\definecolor{pgfred}{RGB}{203,64,66}
+\definecolor{pgfpurple}{RGB}{128,90,213}
+\definecolor{pgfgray}{RGB}{96,108,118}
+\definecolor{pgflight}{RGB}{245,248,250}
+\definecolor{pgfline}{RGB}{174,184,193}
+
+\pgfplotsset{
+  paper axis/.style={
+    width=\linewidth,
+    height=6.2cm,
+    grid=major,
+    grid style={draw=pgfline!35},
+    axis line style={pgfline},
+    tick style={pgfline},
+    label style={font=\figmainfont},
+    tick label style={font=\figsubfont},
+    legend style={font=\figmainfont, draw=none, fill=none},
+    every axis plot/.append style={line width=1pt},
+  },
+  paper bar/.style={
+    paper axis,
+    ybar,
+    /pgf/bar width=9pt,
+    ymin=0,
+    enlarge x limits=0.24,
+    xtick=data,
+    nodes near coords,
+    nodes near coords style={font=\figsubfont, /pgf/number format/fixed, /pgf/number format/precision=1},
+  }
+}
+
+\newcommand{\pgfarchfigure}{%
+\begin{tikzpicture}[
+  font=\figmainfont,
+  >=Stealth,
+  module/.style={draw=##1!55, fill=##1!10, minimum width=2.5cm, minimum height=0.95cm,
+    align=center, rounded corners=3pt,
+    blur shadow={shadow blur steps=5, shadow xshift=0.5pt, shadow yshift=-0.5pt,
+                 shadow blur radius=1.2pt, shadow opacity=16}},
+  arrow/.style={->, line width=0.85pt, draw=pgfgray!75,
+    >={Stealth[length=5pt, width=3.5pt]}},
+  bus/.style={-, line width=0.85pt, draw=pgfgray!75}
+]
+  % ---- UI Layer ----
+  \node[module=pgfblue]   (cli) at (-2.6, 5.6) {\textbf{CLI}\\{\figsubfont Typer}};
+  \node[module=pgfblue]   (web) at ( 2.6, 5.6) {\textbf{Web UI}\\{\figsubfont Gradio}};
+
+  % ---- Core Layer ----
+  \node[module=pgfgreen]  (model)   at (-3.1, 3.1) {\textbf{模型库}\\{\figsubfont 注册表}};
+  \node[module=pgforange] (runner)  at ( 0,   3.1) {\textbf{任务编排器}\\{\figsubfont YAML调度}};
+  \node[module=pgfred]    (attack)  at ( 0,   1.7) {\textbf{攻击引擎}\\{\figsubfont FGSM/PGD/SD}};
+  \node[module=pgfgreen]  (defense) at ( 0,   0.3) {\textbf{防御引擎}\\{\figsubfont 净化/变换}};
+  \node[module=pgfpurple] (eval)    at ( 0,  -1.1) {\textbf{评估模块}\\{\figsubfont 多维指标}};
+  \node[module=pgfpurple] (report)  at ( 0,  -2.5) {\textbf{报告生成}\\{\figsubfont Jinja2}};
+
+  % ---- Output Layer ----
+  \node[module=pgfred] (cfg)     at (-4.5, -5.75) {\textbf{配置快照}\\{\figsubfont YAML}};
+  \node[module=pgfred] (metrics) at (-1.5, -5.75) {\textbf{指标数据}\\{\figsubfont JSON/CSV}};
+  \node[module=pgfred] (figs)    at ( 1.5, -5.75) {\textbf{可视化}\\{\figsubfont PDF/PNG}};
+  \node[module=pgfred] (samples) at ( 4.5, -5.75) {\textbf{样本报告}\\{\figsubfont 图像/MD}};
+
+  % ---- Background layer boxes ----
+  \begin{pgfonlayer}{background}
+    \node[draw=pgfblue!35, fill=pgfblue!3, rounded corners=8pt,
+          inner sep=13pt, fit=(cli)(web),
+          label={[font=\bfseries\figmainfont, text=pgfblue!80]above:用户界面层}] {};
+    \node[draw=pgfgreen!30, fill=pgfgreen!2, rounded corners=8pt,
+          inner sep=13pt, fit=(model)(runner)(attack)(defense)(eval)(report),
+          label={[font=\bfseries\figmainfont, text=pgfgreen!70!black]above:核心系统层}] {};
+    \node[draw=pgfred!30, fill=pgfred!2, rounded corners=8pt,
+          inner sep=13pt, fit=(cfg)(metrics)(figs)(samples),
+          label={[font=\bfseries\figmainfont, text=pgfred!70!black, label distance=5mm]above:输出层}] {};
+  \end{pgfonlayer}
+
+  % ---- Connections ----
+  \draw[arrow] (cli.east) -| (runner.north);
+  \draw[arrow] (web.west) -| (runner.north);
+  \draw[arrow, pgfgreen!70!black] (runner.west) -- (model.east);
+  % Vertical pipeline with colored arrows
+  \draw[arrow, pgforange!70!black] (runner.south)  -- (attack.north);
+  \draw[arrow, pgfred!60!black] (attack.south)  -- (defense.north);
+  \draw[arrow, pgfgreen!60!black] (defense.south) -- (eval.north);
+  \draw[arrow, pgfpurple!60!black] (eval.south)    -- (report.north);
+  % Pipeline step numbers
+  \node[step number=pgforange] at (-0.55, 2.4) {\figsubfont 1};
+  \node[step number=pgfred]    at (-0.55, 1.0) {\figsubfont 2};
+  \node[step number=pgfgreen]  at (-0.55,-0.4) {\figsubfont 3};
+  \node[step number=pgfpurple] at (-0.55,-1.8) {\figsubfont 4};
+  % Report → outputs via horizontal bus
+  \draw[bus, pgfpurple!50] (report.south) -- (0,-4.55);
+  \draw[bus, pgfred!50] (-4.5,-4.55) -- (4.5,-4.55);
+  \foreach \x in {-4.5,-1.5,1.5,4.5} {
+    \fill[pgfred!45] (\x,-4.55) circle (2pt);
+  }
+  \draw[arrow, pgfred!60] (-4.5,-4.55) -- (cfg.north);
+  \draw[arrow, pgfred!60] (-1.5,-4.55) -- (metrics.north);
+  \draw[arrow, pgfred!60] ( 1.5,-4.55) -- (figs.north);
+  \draw[arrow, pgfred!60] ( 4.5,-4.55) -- (samples.north);
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfpipelinefigure}{%
+\begin{tikzpicture}[
+  font=\figmainfont,
+  >=Stealth,
+  stage/.style={draw=##1!55, fill=##1!10, minimum width=2.1cm, minimum height=1.1cm,
+    align=center, rounded corners=3pt,
+    blur shadow={shadow blur steps=5, shadow xshift=0.4pt, shadow yshift=-0.4pt,
+                 shadow blur radius=1pt, shadow opacity=14}},
+  data/.style={draw=pgfgray!45, fill=pgflight, minimum width=1.95cm, minimum height=0.72cm,
+    align=center, rounded corners=2pt,
+    inner sep=3pt, font=\figmainfont},
+  arrow/.style={->, line width=0.9pt, draw=pgfgray!70,
+    >={Stealth[length=5pt, width=3.5pt]}},
+  dataarrow/.style={->, line width=0.65pt, draw=pgfgray!45, dashed,
+    >={Stealth[length=4pt, width=3pt]}}
+]
+  \node[data, fill=pgfblue!12, draw=pgfblue!40] (yaml) at (0, 1.8) {\textbf{YAML}\\{\figsubfont 配置}};
+  \node[stage=pgforange] (load) at (0, 0) {\textbf{数据/模型}\\{\figsubfont 加载}};
+  \node[stage=pgfred]    (attack) at (3.1, 0) {\textbf{多种子}\\{\figsubfont 攻击生成}};
+  \node[stage=pgfgreen]  (defense) at (6.2, 0) {\textbf{防御与}\\{\figsubfont 评估}};
+  \node[stage=pgfpurple] (eval) at (9.3, 0) {\textbf{指标聚合}\\{\figsubfont 资源记录}};
+  \node[stage=pgfblue]   (report) at (12.4, 0) {\textbf{产物归档}\\{\figsubfont 图表/报告}};
+  \node[data] (samples) at (3.1, -1.65) {{\figsubfont $\blacktriangleright$} 对抗样本};
+  \node[data] (cleaned) at (6.2, -1.65) {{\figsubfont $\blacktriangleright$} 防御样本};
+  \node[data] (metrics) at (9.3, -1.65) {{\figsubfont $\blacktriangleright$} 均值/标准差};
+
+  % Step numbers
+  \node[step number=pgforange] at ($(load.north west)+(0.1,0.1)$) {\figsubfont 1};
+  \node[step number=pgfred]    at ($(attack.north west)+(0.1,0.1)$) {\figsubfont 2};
+  \node[step number=pgfgreen]  at ($(defense.north west)+(0.1,0.1)$) {\figsubfont 3};
+  \node[step number=pgfpurple] at ($(eval.north west)+(0.1,0.1)$) {\figsubfont 4};
+  \node[step number=pgfblue]   at ($(report.north west)+(0.1,0.1)$) {\figsubfont 5};
+
+  % Main flow arrows
+  \draw[arrow, pgfblue!60] (yaml) -- (load);
+  \draw[arrow, pgforange!70!black] (load) -- (attack);
+  \draw[arrow, pgfred!60!black] (attack) -- (defense);
+  \draw[arrow, pgfgreen!60!black] (defense) -- (eval);
+  \draw[arrow, pgfpurple!60!black] (eval) -- (report);
+  % Data output arrows
+  \draw[dataarrow] (attack) -- (samples);
+  \draw[dataarrow] (defense) -- (cleaned);
+  \draw[dataarrow] (eval) -- (metrics);
+  \draw[dataarrow, pgfpurple!45] (metrics.east) -| ($(report.south)-(0.3,0)$);
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfmethodfigure}{%
+\begin{tikzpicture}[
+  font=\figmainfont,
+  >=Stealth,
+  block/.style={draw=##1!55, fill=##1!10, minimum width=2.3cm, minimum height=0.9cm,
+    align=center,
+    blur shadow={shadow blur steps=5, shadow xshift=0.4pt, shadow yshift=-0.4pt,
+                 shadow blur radius=1pt, shadow opacity=14}},
+  smallblock/.style={draw=pgfgray!45, fill=pgflight, minimum width=1.95cm,
+    minimum height=0.7cm, align=center, font=\figmainfont},
+  arrow/.style={->, line width=0.9pt, draw=pgfgray!70,
+    >={Stealth[length=5pt, width=3.5pt]}},
+  looparrow/.style={->, line width=0.8pt, draw=pgfred!65, dashed,
+    >={Stealth[length=4.5pt, width=3pt]}}
+]
+  \node[block=pgfblue]   (input)  at (0,0)    {\textbf{原始图像}\\{\figsubfont $x,y$}};
+  \node[block=pgforange] (gen)    at (3.0,0)  {\textbf{扩散编辑器}\\{\figsubfont $G_\phi(x,p,s,g,\xi)$}};
+  \node[block=pgfred]    (cand)   at (6.0,0)  {\textbf{候选集合}\\{\figsubfont $\mathcal{C}_i$}};
+  \node[block=pgfgreen]  (clf)    at (9.0,0)  {\textbf{目标模型}\\{\figsubfont $f_\theta$}};
+  \node[block=pgfpurple] (select) at (12.0,0) {\textbf{成功筛选}\\{\figsubfont LPIPS择优}};
+  \node[smallblock, fill=pgforange!8] (budget) at (3.0,1.86) {\textbf{预算控制}\\{\figsubfont $N,s,g$}};
+  \node[smallblock, fill=pgfred!8]    (fallback) at (6.0,-1.84) {\textbf{失败回退}\\{\figsubfont $s+\Delta s$}};
+  \node[smallblock, fill=pgfpurple!8] (metrics) at (12.0,-1.84) {\textbf{ASR/RA}\\{\figsubfont 质量/代价}};
+
+  % Main flow
+  \draw[arrow, pgfblue!60!black] (input) -- (gen);
+  \draw[arrow, pgforange!65!black] (gen) -- (cand);
+  \draw[arrow, pgfred!60!black] (cand) -- (clf);
+  \draw[arrow, pgfgreen!60!black] (clf) -- (select);
+  % Parameter input
+  \draw[arrow, pgforange!50] (budget) -- (gen);
+  % Fallback loop
+  \draw[looparrow] (cand) -- (fallback);
+  \draw[looparrow] (fallback.west) -| (gen.south);
+  % Early-stop loop annotation
+  \draw[looparrow, pgfgreen!60] (clf.north) -- +(0,0.375) -| node[pos=0.25, above, font=\figsubfont, text=pgfgreen!70!black] {早停} (gen.north);
+  % Output
+  \draw[arrow, pgfpurple!55] (select) -- (metrics);
+
+  % Dashed boundary for candidate search
+  \begin{pgfonlayer}{background}
+    \node[draw=pgfgray!30, fill=pgflight!50, dashed,
+          inner sep=8pt, fit=(gen)(cand)(clf)(budget)(fallback),
+          label={[font=\figsubfont\itshape, text=pgfgray!70, label distance=1pt]above right:候选搜索空间}] {};
+  \end{pgfonlayer}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfattackcomparisonfigure}{%
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 2, horizontal sep=1.35cm, vertical sep=1.65cm},
+  width=0.46\linewidth,
+  height=4.4cm,
+  ybar,
+  /pgf/bar width=12pt,
+  symbolic x coords={FGSM,PGD,扩散攻击},
+  xtick=data,
+  ymin=0,
+  grid=major,
+  grid style={draw=pgfline!25, dashed},
+  axis line style={pgfline!60},
+  tick style={pgfline!50},
+  tick label style={font=\figsubfont},
+  label style={font=\figmainfont},
+  title style={font=\figmainfont\bfseries},
+  nodes near coords,
+  nodes near coords style={font=\figsubfont\bfseries, /pgf/number format/fixed, /pgf/number format/precision=1},
+  enlarge x limits=0.30,
+  every axis plot/.append style={fill opacity=0.82},
+]
+\nextgroupplot[title={ASR（\%）}, ymax=115, ylabel={\figmainfont \%},
+  extra y ticks={50}, extra y tick style={grid style={draw=pgfred!40, thick, dashed}, tick label style={font=\figmicrofont, text=pgfred!70}}]
+  \addplot[fill=pgfblue!70, draw=pgfblue!80, line width=0.6pt] coordinates {(FGSM,50.5) (PGD,99.2) (扩散攻击,100.0)};
+\nextgroupplot[title={LPIPS}, ymax=0.72, ylabel={\figmainfont 距离},
+  nodes near coords style={font=\figsubfont\bfseries, /pgf/number format/fixed, /pgf/number format/precision=3}]
+  \addplot[fill=pgforange!75, draw=pgforange!80, line width=0.6pt] coordinates {(FGSM,0.243) (PGD,0.118) (扩散攻击,0.575)};
+\nextgroupplot[title={CLIP Score}, ymax=0.265, ylabel={\figmainfont 相似度},
+  nodes near coords style={font=\figsubfont\bfseries, /pgf/number format/fixed, /pgf/number format/precision=3}]
+  \addplot[fill=pgfgreen!75, draw=pgfdarkgreen!80, line width=0.6pt] coordinates {(FGSM,0.227) (PGD,0.226) (扩散攻击,0.205)};
+\nextgroupplot[title={FID}, ymax=3.5, ylabel={\figmainfont 分布距离},
+  nodes near coords style={font=\figsubfont\bfseries, /pgf/number format/fixed, /pgf/number format/precision=3}]
+  \addplot[fill=pgfred!68, draw=pgfred!80, line width=0.6pt] coordinates {(FGSM,1.695) (PGD,0.374) (扩散攻击,1.957)};
+\end{groupplot}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfradarfigure}{%
+\begin{tikzpicture}
+\begin{polaraxis}[
+  width=0.68\linewidth,
+  height=0.68\linewidth,
+  ymin=0, ymax=1.08,
+  ytick={0.25,0.5,0.75,1.0},
+  yticklabels={0.25,0.50,0.75,1.00},
+  yticklabel style={font=\figmicrofont, text=pgfgray},
+  xtick={90,18,306,234,162},
+  xticklabels={\textbf{ASR},\textbf{ASR-C},\textbf{LPIPS},\textbf{CLIP},\textbf{FID}},
+  grid=both,
+  major grid style={draw=pgfline!40},
+  minor grid style={draw=pgfline!15},
+  tick label style={font=\figmainfont},
+  legend style={at={(0.5,-0.16)}, anchor=north, legend columns=3,
+    draw=pgfline!30, fill=white, rounded corners=2pt, font=\figmainfont,
+    /tikz/every even column/.append style={column sep=8pt}},
+]
+  % FGSM with fill
+  \addplot+[mark=*, color=pgfblue, line width=1.3pt, fill=pgfblue, fill opacity=0.10,
+    mark options={fill=white, draw=pgfblue, line width=0.9pt, solid}]
+    coordinates {(90,0.505) (18,0.524) (306,0.757) (234,1.000) (162,0.550) (90,0.505)}
+    \closedcycle;
+  \addlegendentry{FGSM}
+  % PGD with fill
+  \addplot+[mark=square*, color=pgfdarkgreen, line width=1.3pt, fill=pgfdarkgreen, fill opacity=0.10,
+    mark options={fill=white, draw=pgfdarkgreen, line width=0.9pt, solid}]
+    coordinates {(90,0.992) (18,1.000) (306,0.882) (234,0.997) (162,0.879) (90,0.992)}
+    \closedcycle;
+  \addlegendentry{PGD}
+  % Diffusion with fill
+  \addplot+[mark=triangle*, color=pgfred, line width=1.3pt, fill=pgfred, fill opacity=0.12,
+    mark options={fill=white, draw=pgfred, line width=0.9pt, solid}]
+    coordinates {(90,1.000) (18,1.000) (306,0.425) (234,0.903) (162,0.488) (90,1.000)}
+    \closedcycle;
+  \addlegendentry{扩散攻击}
+\end{polaraxis}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfheatmapfigure}{%
+\begin{tikzpicture}[font=\figmainfont]
+  \matrix[matrix of nodes,
+    ampersand replacement=\&,
+    nodes={minimum width=1.9cm, minimum height=0.88cm, anchor=center,
+           draw=white, line width=0.8pt, rounded corners=1.5pt, font=\figmainfont},
+    column sep=0.5pt, row sep=0.5pt
+  ] (m) {
+    |[fill=pgfgray!15, font=\figmainfont\bfseries]|攻击/防御 \& |[fill=pgfgray!15, font=\figmainfont\bfseries]|无防御 \& |[fill=pgfgray!15, font=\figmainfont\bfseries]|JPEG \& |[fill=pgfgray!15, font=\figmainfont\bfseries]|高斯模糊 \& |[fill=pgfgray!15, font=\figmainfont\bfseries]|位深度 \& |[fill=pgfgray!15, font=\figmainfont\bfseries]|扩散净化 \\
+    |[fill=pgfgray!10, font=\figmainfont\bfseries]|FGSM \& |[fill=pgfblue!39]|\textbf{39.0} \& |[fill=pgfblue!47]|\textbf{47.0} \& |[fill=pgfblue!51, text=white]|\textbf{51.0} \& |[fill=pgfblue!44]|\textbf{43.5} \& |[fill=pgfblue!20]|20.2 \\
+    |[fill=pgfgray!10, font=\figmainfont\bfseries]|PGD \& |[fill=pgfred!15]|0.0 \& |[fill=pgfblue!36]|\textbf{36.2} \& |[fill=pgfblue!38]|\textbf{38.2} \& |[fill=pgfred!15]|0.0 \& |[fill=pgfblue!25]|24.5 \\
+    |[fill=pgfgray!10, font=\figmainfont\bfseries]|扩散攻击 \& |[fill=pgfred!18]|0.0 \& |[fill=pgfred!10]|1.0 \& |[fill=pgfred!10]|1.5 \& |[fill=pgfred!12]|0.3 \& |[fill=pgfred!10]|1.0 \\
+  };
+  % Color bar
+  \begin{scope}[shift={($(m.south east)+(0.55,0.48)$)}]
+    \shade[top color=pgfblue!55, bottom color=pgfred!18] (0,0) rectangle (0.28,2.65);
+    \draw[draw=pgfgray!50, rounded corners=1pt] (0,0) rectangle (0.28,2.65);
+    \node[right, font=\figmicrofont, text=pgfgray] at (0.35,2.65) {51\%};
+    \node[right, font=\figmicrofont, text=pgfgray] at (0.35,1.33) {25\%};
+    \node[right, font=\figmicrofont, text=pgfgray] at (0.35,0)    {0\%};
+    \node[above, font=\figsubfont\bfseries, text=pgfgray!80] at (0.14,2.75) {RA};
+  \end{scope}
+  \node[anchor=north, font=\figsubfont, text=pgfgray!70, align=center]
+    at ($(m.south west)!0.5!(m.south east)+(0,-0.42)$) {颜色映射：蓝色越深表示鲁棒准确率越高，红色表示接近零};
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfdefensebarfigure}{%
+\begin{tikzpicture}
+\begin{axis}[
+  paper axis,
+  ybar,
+  width=0.88\linewidth,
+  height=6.4cm,
+  /pgf/bar width=8pt,
+  ymin=0, ymax=72,
+  ylabel={\figmainfont RA（\%）},
+  symbolic x coords={无防御,JPEG,高斯模糊,位深度,扩散净化},
+  xtick=data,
+  x tick label style={rotate=25, anchor=east, font=\figsubfont},
+  enlarge x limits=0.16,
+  grid style={draw=pgfline!25, dashed},
+  extra y ticks={1.5}, extra y tick labels={},
+  extra y tick style={grid style={draw=pgfred!50, thick, dashed}},
+  legend style={at={(0.5,1.04)}, anchor=south, legend columns=3,
+    draw=pgfline!30, fill=white, rounded corners=2pt, font=\figmainfont,
+    /tikz/every even column/.append style={column sep=6pt}},
+  legend image post style={sharp corners},
+  nodes near coords,
+  nodes near coords style={font=\figmicrofont, /pgf/number format/fixed, /pgf/number format/precision=1,
+    rotate=90, anchor=west, xshift=-1pt},
+  every axis plot/.append style={fill opacity=0.8},
+]
+  \addplot[fill=pgfblue!70, draw=pgfblue!80, line width=0.5pt] coordinates {(无防御,39.0) (JPEG,47.0) (高斯模糊,51.0) (位深度,43.5) (扩散净化,20.2)};
+  \addplot[fill=pgforange!75, draw=pgforange!80, line width=0.5pt] coordinates {(无防御,0.0) (JPEG,36.2) (高斯模糊,38.2) (位深度,0.0) (扩散净化,24.5)};
+  \addplot[fill=pgfred!65, draw=pgfred!80, line width=0.5pt] coordinates {(无防御,0.0) (JPEG,1.0) (高斯模糊,1.5) (位深度,0.3) (扩散净化,1.0)};
+  \legend{FGSM,PGD,扩散攻击}
+\end{axis}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfdefensecostfigure}{%
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=2.2cm},
+  width=0.44\linewidth,
+  height=5.5cm,
+  ybar,
+  /pgf/bar width=13pt,
+  symbolic x coords={JPEG,高斯模糊,位深度,扩散净化},
+  xtick=data,
+  x tick label style={rotate=28, anchor=east, font=\figsubfont},
+  grid=major,
+  grid style={draw=pgfline!25, dashed},
+  axis line style={pgfline!60},
+  tick style={pgfline!50},
+  label style={font=\figmainfont},
+  title style={font=\figmainfont\bfseries},
+  nodes near coords,
+  nodes near coords style={font=\figsubfont\bfseries, /pgf/number format/fixed, /pgf/number format/precision=1},
+  enlarge x limits=0.26,
+  ymin=0,
+  every axis plot/.append style={fill opacity=0.82},
+]
+\nextgroupplot[title={干净准确率下降（\%）}, ylabel={\figmainfont 下降幅度（\%）}, ymax=68]
+  \addplot[fill=pgforange!75, draw=pgforange!80, line width=0.6pt] coordinates {(JPEG,1.0) (高斯模糊,0.0) (位深度,0.0) (扩散净化,57.2)};
+\nextgroupplot[title={处理延迟（s）}, ylabel={\figmainfont 平均延迟（s）}, ymax=155,
+  extra y ticks={1.5}, extra y tick labels={},
+  extra y tick style={grid style={draw=pgfgreen!50, thick, dashed}}]
+  \addplot[fill=pgfpurple!70, draw=pgfpurple!80, line width=0.6pt] coordinates {(JPEG,1.43) (高斯模糊,0.035) (位深度,0.033) (扩散净化,137.8)};
+\end{groupplot}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfstrengthfigure}{%
+\begin{tikzpicture}
+\begin{axis}[
+  paper axis,
+  width=0.72\linewidth,
+  height=5.8cm,
+  xlabel={\figmainfont 编辑强度 ($s$)},
+  ylabel={\figmainfont ASR（\%）},
+  axis y line*=left,
+  xmin=0.23, xmax=0.77,
+  ymin=0, ymax=112,
+  xtick={0.3,0.5,0.7},
+  xticklabels={$s{=}0.3$, $s{=}0.5$, $s{=}0.7$},
+  grid style={draw=pgfline!25, dashed},
+  ylabel style={text=pgfblue!80},
+  legend style={at={(0.5,1.06)}, anchor=south, legend columns=2,
+    draw=pgfline!30, fill=white, rounded corners=2pt, font=\figmainfont,
+    /tikz/every even column/.append style={column sep=8pt}},
+]
+  % ASR curve
+  \addplot[name path=asr, color=pgfblue, mark=*, thick, line width=1.3pt,
+    mark options={fill=white, draw=pgfblue, line width=1pt}]
+    coordinates {(0.3,91.8) (0.5,99.8) (0.7,100.0)};
+  \addlegendentry{ASR（\%）}
+  \addlegendimage{color=pgfred, mark=triangle*, mark options={fill=white, draw=pgfred, line width=1pt}, line width=1.3pt}
+  \addlegendentry{LPIPS}
+\end{axis}
+\begin{axis}[
+  paper axis,
+  width=0.72\linewidth,
+  height=5.8cm,
+  axis y line*=right,
+  axis x line=none,
+  xmin=0.23, xmax=0.77,
+  ymin=0, ymax=0.75,
+  ylabel={\figmainfont LPIPS},
+  ylabel style={text=pgfred!80},
+  grid=none,
+  legend style={draw=none},
+]
+  \addplot[color=pgfred, mark=triangle*, thick, line width=1.3pt,
+    mark options={fill=white, draw=pgfred, line width=1pt}]
+    coordinates {(0.3,0.364) (0.5,0.497) (0.7,0.620)};
+\end{axis}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfpurificationfigure}{%
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=3 by 1, horizontal sep=1.35cm},
+  width=0.31\linewidth,
+  height=4.8cm,
+  xlabel={\figmainfont 去噪步数},
+  xmin=6, xmax=54,
+  xtick={10,20,50},
+  grid=major,
+  grid style={draw=pgfline!25, dashed},
+  axis line style={pgfline!60},
+  tick style={pgfline!50},
+  tick label style={font=\figsubfont},
+  label style={font=\figmainfont},
+  title style={font=\figmainfont\bfseries},
+  every axis plot/.append style={line width=1.3pt, mark=*,
+    mark options={fill=white, line width=0.9pt}}
+]
+\nextgroupplot[title={RA（\%）}, ymin=0, ymax=2.5, ylabel={\figmainfont \%}]
+  \addplot[color=pgfblue, mark options={fill=white, draw=pgfblue}] coordinates {(10,0.5) (20,0.5) (50,0.7)};
+  \addplot[name path=ra, draw=none] coordinates {(10,0.5) (20,0.5) (50,0.7)};
+  \addplot[name path=razero, draw=none] coordinates {(10,0) (50,0)};
+  \addplot[fill=pgfblue, fill opacity=0.08] fill between[of=ra and razero];
+\nextgroupplot[title={干净下降（\%）}, ymin=48, ymax=80, ylabel={\figmainfont \%}]
+  \addplot[color=pgforange, mark options={fill=white, draw=pgforange}] coordinates {(10,72.2) (20,65.3) (50,55.7)};
+  \addplot[name path=cd, draw=none] coordinates {(10,72.2) (20,65.3) (50,55.7)};
+  \addplot[name path=cdbase, draw=none] coordinates {(10,48) (50,48)};
+  \addplot[fill=pgforange, fill opacity=0.08] fill between[of=cd and cdbase];
+  \node[font=\figmicrofont, text=pgforange!80, anchor=south west] at (axis cs:35,57) {$\downarrow$};
+\nextgroupplot[title={延迟（s）}, ymin=0, ymax=140, ylabel={\figmainfont s}]
+  \addplot[color=pgfpurple, mark options={fill=white, draw=pgfpurple}] coordinates {(10,40.9) (20,61.3) (50,121.7)};
+  \addplot[name path=lat, draw=none] coordinates {(10,40.9) (20,61.3) (50,121.7)};
+  \addplot[name path=latzero, draw=none] coordinates {(10,0) (50,0)};
+  \addplot[fill=pgfpurple, fill opacity=0.06] fill between[of=lat and latzero];
+  \node[font=\figmicrofont, text=pgfpurple!80, anchor=south east] at (axis cs:48,110) {$\uparrow$};
+\end{groupplot}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfresourceprofilefigure}{%
+\begin{tikzpicture}
+\begin{groupplot}[
+  group style={group size=2 by 1, horizontal sep=1.7cm},
+  width=0.45\linewidth,
+  height=5.8cm,
+  ybar,
+  /pgf/bar width=7pt,
+  symbolic x coords={基线,扩散攻击,完整矩阵,扩散防御},
+  xtick=data,
+  x tick label style={rotate=28, anchor=east, font=\figsubfont},
+  grid=major,
+  grid style={draw=pgfline!25, dashed},
+  axis line style={pgfline!60},
+  tick style={pgfline!50},
+  tick label style={font=\figsubfont},
+  label style={font=\figmainfont},
+  title style={font=\figmainfont\bfseries},
+  legend style={at={(0.5,1.24)}, anchor=south, legend columns=2,
+    draw=pgfline!30, fill=white, rounded corners=2pt, font=\figmainfont,
+    /tikz/every even column/.append style={column sep=6pt}},
+  legend image post style={sharp corners},
+  ymin=0,
+  enlarge x limits=0.22,
+  nodes near coords,
+  nodes near coords style={font=\figmicrofont, /pgf/number format/fixed, /pgf/number format/precision=1,
+    rotate=90, anchor=west, xshift=-1pt},
+  every axis plot/.append style={fill opacity=0.82},
+]
+\nextgroupplot[title={GPU显存剖面}, ylabel={\figmainfont 显存（GB）}, ymax=52]
+  \addplot[fill=pgfblue!70, draw=pgfblue!80, line width=0.5pt] coordinates {(基线,45.34) (扩散攻击,19.19) (完整矩阵,8.30) (扩散防御,18.64)};
+  \addlegendentry{峰值分配}
+  \addplot[fill=pgforange!75, draw=pgforange!80, line width=0.5pt] coordinates {(基线,45.64) (扩散攻击,21.01) (完整矩阵,8.89) (扩散防御,20.26)};
+  \addlegendentry{保留显存}
+\nextgroupplot[title={CPU驻留内存}, ylabel={\figmainfont RSS峰值（GB）}, ymax=8.5]
+  \addplot[fill=pgfgreen!72, draw=pgfdarkgreen!80, line width=0.5pt] coordinates {(基线,2.13) (扩散攻击,4.60) (完整矩阵,7.34) (扩散防御,4.34)};
+\end{groupplot}
+\end{tikzpicture}%
+}
+
+\newcommand{\pgfcrossmodelbubblefigure}{%
+\begin{tikzpicture}[font=\figmainfont]
+  \def\BubbleYPad{0.72}
+  \def\BubbleYMin{-0.72}
+  \def\BubbleDropRes{57.50}
+  \def\BubbleDropVit{28.33}
+  \def\BubbleDropDense{45.67}
+  \def\BubbleRMin{0.42}
+  \def\BubbleRMax{1.18}
+  \pgfmathsetmacro{\BubbleSpan}{\BubbleDropRes-\BubbleDropVit}
+  \pgfmathsetmacro{\BubbleRVit}{\BubbleRMin}
+  \pgfmathsetmacro{\BubbleRDense}{\BubbleRMin+(\BubbleDropDense-\BubbleDropVit)/\BubbleSpan*(\BubbleRMax-\BubbleRMin)}
+  \pgfmathsetmacro{\BubbleRRes}{\BubbleRMax}
+  % Axes with better styling
+  \draw[->, draw=pgfgray!70, line width=0.9pt, >={Stealth[length=5pt]}]
+    (0,\BubbleYMin) -- (10.6,\BubbleYMin) node[right, font=\figmainfont] {干净准确率（\%）};
+  \draw[->, draw=pgfgray!70, line width=0.9pt, >={Stealth[length=5pt]}]
+    (0,\BubbleYMin) -- (0,{6.7+\BubbleYPad}) node[above, font=\figmainfont] {FGSM ASR（\%）};
+  % Grid
+  \foreach \x/\lab in {0/70,2.5/74,5/78,7.5/82,10/86} {
+    \draw[draw=pgfline!50] (\x,\BubbleYMin) -- ({\x},{\BubbleYMin-0.1}) node[below, font=\figsubfont] {\lab};
+    \draw[draw=pgfline!20, dashed] (\x,\BubbleYMin) -- (\x,{6.2+\BubbleYPad});
+  }
+  \foreach \y/\lab in {0/45,1.5/60,3/75,4.5/90,6/105} {
+    \draw[draw=pgfline!50] (0,{\y+\BubbleYPad}) -- (-0.1,{\y+\BubbleYPad}) node[left, font=\figsubfont] {\lab};
+    \draw[draw=pgfline!20, dashed] (0,{\y+\BubbleYPad}) -- (10.2,{\y+\BubbleYPad});
+  }
+  % Bubble positions
+  \def\BubbleXRes{6.55}
+  \def\BubbleYRes{0.55}
+  \def\BubbleXVit{8.55}
+  \def\BubbleYVit{1.95}
+  \def\BubbleXDense{1.65}
+  \def\BubbleYDense{4.95}
+  % ResNet-50 bubble with glow
+  \filldraw[fill=pgfblue!25, draw=pgfblue!70, line width=1.1pt, fill opacity=0.6]
+    (\BubbleXRes,{\BubbleYRes+\BubbleYPad}) circle (\BubbleRRes);
+  \filldraw[fill=pgfblue, draw=none, opacity=0.12]
+    (\BubbleXRes,{\BubbleYRes+\BubbleYPad}) circle ({\BubbleRRes+0.16});
+  \node[anchor=west, align=left,
+    fill=white, fill opacity=0.85, text opacity=1, rounded corners=2pt, inner sep=2pt]
+    at ({\BubbleXRes+\BubbleRRes+0.12},{\BubbleYRes+\BubbleYPad})
+    {{\figmainfont\bfseries ResNet-50}\\{\figsubfont 净化下降 \BubbleDropRes\%}};
+  % ViT bubble with glow
+  \filldraw[fill=pgforange!30, draw=pgforange!70, line width=1.1pt, fill opacity=0.6]
+    (\BubbleXVit,{\BubbleYVit+\BubbleYPad}) circle (\BubbleRVit);
+  \filldraw[fill=pgforange, draw=none, opacity=0.12]
+    (\BubbleXVit,{\BubbleYVit+\BubbleYPad}) circle ({\BubbleRVit+0.14});
+  \node[anchor=west, align=left,
+    fill=white, fill opacity=0.85, text opacity=1, rounded corners=2pt, inner sep=2pt]
+    at ({\BubbleXVit+\BubbleRVit+0.12},{\BubbleYVit+\BubbleYPad})
+    {{\figmainfont\bfseries ViT-B/16}\\{\figsubfont 净化下降 \BubbleDropVit\%}};
+  % DenseNet bubble with glow
+  \filldraw[fill=pgfred!25, draw=pgfred!70, line width=1.1pt, fill opacity=0.6]
+    (\BubbleXDense,{\BubbleYDense+\BubbleYPad}) circle (\BubbleRDense);
+  \filldraw[fill=pgfred, draw=none, opacity=0.12]
+    (\BubbleXDense,{\BubbleYDense+\BubbleYPad}) circle ({\BubbleRDense+0.16});
+  \node[anchor=west, align=left,
+    fill=white, fill opacity=0.85, text opacity=1, rounded corners=2pt, inner sep=2pt]
+    at ({\BubbleXDense+\BubbleRDense+0.12},{\BubbleYDense+\BubbleYPad})
+    {{\figmainfont\bfseries DenseNet-121}\\{\figsubfont 净化下降 \BubbleDropDense\%}};
+  % Legend for bubble size
+  \begin{scope}[shift={(8.5,6.2)}]
+    \node[font=\figsubfont, anchor=west, text=pgfgray!80] at (0.45,0) {气泡 $\propto$ 净化副作用};
+    \filldraw[fill=pgfgray!20, draw=pgfgray!50, line width=0.6pt] (0,0) circle (0.2cm);
+  \end{scope}
+\end{tikzpicture}%
+}
+
+\begin{document}
+
+% ===================================================================
+%  Front Matter
+% ===================================================================
+\frontmatter
+
+\tableofcontents
+
+\begin{abstract}
+随着生成式人工智能（Artificial Intelligence Generated Content，AIGC）在图像生成与编辑中的快速普及，面向判别模型的对抗威胁已不再局限于 $L_p$ 范数约束下的微小像素扰动。攻击者可借助扩散模型等生成式模型对输入进行语义与风格重构，生成视觉自然但可诱导误分类的无限制对抗样本。该攻击更贴近真实 AIGC 内容变换流程，也使现有评估平台在攻击生成、防御净化、质量度量与实验复现方面暴露不足。
+
+针对上述问题，本文围绕扩散式无限制对抗样本的生成、筛选和评估展开研究，提出一种基于 Stable Diffusion img2img 的候选搜索式攻击评估方法 \methodname。该方法将生成模型视为语义编辑算子，在给定提示词、编辑强度和候选预算的条件下生成候选集合；随后利用目标分类器判定攻击成功性，并采用“先成功、再择优”的策略在成功候选中选择感知差异更充分的样本。为降低无效计算，方法进一步引入批内早停和失败回退机制；为避免仅用攻击成功率描述无限制攻击，本文同时定义攻击成功率、干净正确样本攻击成功率、鲁棒准确率、LPIPS、CLIP Score、FID、延迟和资源占用等联合评估指标。工程系统在本文中作为方法实现与实验复现载体，而不是论文叙事的中心。
+
+本文基于 ImageNet 子集实验组织和分析结果。传统攻击使用 500 张图像，扩散攻击使用 200 张图像，主要实验采用 3 个随机种子（42、123、456）报告均值与标准差。结果显示：在 ResNet-50 上，FGSM 总体 ASR 为 40.60\%，PGD 为 92.40\%\,$\pm$\,0.72\%，扩散攻击为 100.00\%；仅统计干净正确样本时，三者 ASR 分别为 42.89\%、99.68\%\,$\pm$\,0.14\% 和 100.00\%。候选数量和编辑强度消融表明，扩散候选搜索的影响不只体现在攻击成功率，还体现在查询预算、感知变化与样本自然性之间的权衡。防御实验进一步表明，JPEG、高斯模糊、位深度缩减和扩散净化面对扩散式编辑攻击时鲁棒准确率均不超过 1.50\%；扩散净化虽可在部分传统攻击下恢复 20\%--25\% 的鲁棒准确率，却带来约 138 秒延迟和约 57\% 干净准确率下降。这些结果说明，扩散式无限制攻击需以“生成机制--候选选择--多维指标”共同分析，单一平台功能或单一 ASR 数值不足以描述其安全影响。
+\end{abstract}
+
+
+\begin{abstract*}
+With the rapid deployment of AIGC systems, adversarial threats against vision classifiers are no longer limited to small $L_p$-bounded pixel perturbations. Diffusion-based editing can produce unrestricted adversarial examples that remain visually natural yet cause misclassification, exposing gaps in current attack generation, defense purification, quality measurement, and reproducibility practices.
+
+This thesis studies the generation, selection, and evaluation of diffusion-based unrestricted adversarial examples. It formulates a Stable-Diffusion-img2img candidate-search method, \methodname, which treats the diffusion model as a semantic editing operator. Given a prompt, edit strength, guidance scale, and candidate budget, the method generates candidate adversarial images, checks their success using the target classifier, and selects the successful candidate with stronger perceptual variation. Batch-level early stopping and fallback generation reduce wasted queries, while a multi-dimensional protocol reports ASR, clean-correct ASR, robust accuracy, LPIPS, CLIP Score, FID, latency, and resource cost. The implemented system serves as the reproducible carrier of the method rather than the central contribution.
+
+The thesis organizes and analyzes results on an ImageNet subset. Traditional attacks use 500 images, diffusion attacks use 200 images, and major runs report mean and standard deviation over three seeds (42, 123, 456). On ResNet-50, FGSM reaches 40.60\% ASR, PGD 92.40\%\,$\pm$\,0.72\%, and the diffusion attack 100.00\%; on clean-correct samples the values are 42.89\%, 99.68\%\,$\pm$\,0.14\%, and 100.00\%. Candidate-number and strength ablations show that diffusion search affects not only success rate but also query budget, perceptual change, and naturalness. Robust accuracy stays no higher than 1.50\% under JPEG, Gaussian blur, bit-depth reduction, or diffusion purification. These results suggest analyzing diffusion-based unrestricted attacks through generation mechanism, candidate selection, and multi-dimensional evidence rather than a single ASR number.
+\end{abstract*}
+
+
+% ===================================================================
+%  Main Matter
+% ===================================================================
+\mainmatter
+
+% ============================================================
+%  Chapter 1: Introduction
+% ============================================================
+\chapter{绪论}
+\label{chap:intro}
+
+\section{研究背景与意义}
+
+近年来，生成式人工智能（Artificial Intelligence Generated Content，AIGC）技术在图像生成、编辑和内容生产等场景中快速发展。以扩散模型（Diffusion Models）\cite{ho2020denoising}和生成对抗网络（Generative Adversarial Networks，GAN）为代表的深度生成模型，已在图像合成\cite{rombach2022highresolution}、文本生成、视频创作等任务中得到广泛应用。Stable Diffusion\cite{rombach2022highresolution}等开源模型能够根据文本提示生成高分辨率图像，推动了生成式模型在数字内容创作、智能设计和虚拟现实等场景中的使用。
+
+与此同时，AIGC技术的应用也带来了新的安全问题。在对抗机器学习（Adversarial Machine Learning）领域，自Szegedy等人\cite{szegedy2014intriguing}于2014年发现深度神经网络容易受到对抗样本攻击以来，对抗鲁棒性研究已经成为深度学习安全领域的重要议题。传统的对抗样本研究通常假设攻击者在 $L_p$ 范数约束下对输入添加人眼不可感知的微小扰动，例如快速梯度符号法（FGSM）\cite{goodfellow2015explaining}、投影梯度下降攻击（PGD）\cite{madry2018towards}、C\&W攻击\cite{carlini2017towards}等方法。这类攻击设定便于数学建模和标准化基准测试，但难以覆盖AIGC场景中基于生成式编辑的攻击形态。
+
+在AIGC场景中，攻击者可以利用生成模型在语义、结构、风格、纹理、提示词等多个维度重新构造输入图像，使得对抗样本不再局限于“像素级微小扰动”，而是表现为视觉上自然、接近真实内容变换的“无限制对抗样本”（Unrestricted Adversarial Examples）\cite{brown2018unrestricted,song2018constructing}。例如，AdvDiffuser\cite{chen2023advdiffuser}利用Stable Diffusion模型的图像编辑能力生成视觉上自然但能欺骗分类器的对抗图像，这类攻击不需要满足固定的 $L_p$ 范数约束。无限制对抗样本削弱了基于像素扰动假设的防御和评估方法的适用性，也对现有对抗鲁棒性评估体系提出了新的要求。
+
+从应用安全角度来看，无限制对抗样本可能影响多个安全敏感领域。在自动驾驶场景中，攻击者可以利用生成模型构造看似正常但能误导感知系统的交通标志或道路场景，导致车辆做出错误决策。在医学影像诊断领域，生成式对抗样本可能干扰计算机辅助诊断系统的判断结果，造成误诊或漏诊。在安防监控和人脸识别系统中，基于生成模型的对抗攻击可能绕过身份验证和活体检测机制。在内容审核和版权保护领域，AIGC生成的对抗样本也可能影响内容检测系统的可靠性。因此，本文将研究重点放在扩散式无限制对抗样本的生成机制、候选选择策略和鲁棒性评估方法上，通过可复现实验系统承载实验，而不是把系统工程本身作为唯一研究对象。
+
+\section{研究现状与问题}
+
+\subsection{对抗攻击研究现状}
+
+对抗攻击方法经历了从像素级扰动到生成式变换的发展过程。在传统梯度攻击方面，Goodfellow等人\cite{goodfellow2015explaining}于2015年提出了快速梯度符号法（FGSM），该方法通过计算损失函数相对于输入的梯度方向符号，沿该方向添加固定幅度的扰动来生成对抗样本，是较早的高效白盒攻击方法之一。Madry等人\cite{madry2018towards}于2018年提出了投影梯度下降（PGD）攻击，将FGSM扩展为多步迭代形式，通过反复计算梯度并投影到扰动范围内增强攻击效果。Carlini和Wagner\cite{carlini2017towards}提出了C\&W攻击，通过优化目标搜索能够改变模型预测结果的较小扰动。这些传统方法均在 $L_p$ 范数约束下工作，生成的对抗扰动通常人眼不可感知但具有明确的数学边界。
+
+随着深度生成模型的发展，基于生成式方法的对抗攻击逐渐出现。Song等人\cite{song2018constructing}较早提出利用条件生成模型构造不受小范数扰动约束的对抗样本。Bai等人\cite{bai2021aigan}提出了AI-GAN，利用GAN架构训练生成器网络，以原始样本为输入直接生成对抗样本。Chen等人\cite{chen2023advdiffuser}提出了AdvDiffuser，利用Stable Diffusion\cite{rombach2022highresolution}的图像编辑能力，通过在扩散过程中注入目标分类器的梯度信号来引导生成对抗样本，实现不受固定 $L_p$ 范数约束的攻击。Xie等人\cite{xie2025takefake}进一步研究了面向AIGC检测系统的对抗攻击，提出“Take Fake as Real”方法。这类生成式攻击能够产生视觉上更自然的对抗样本，对传统基于扰动检测的防御方法提出了新的挑战。
+
+\subsection{对抗防御研究现状}
+
+对抗防御方法主要包括对抗训练、输入净化和认证防御三大类技术路线。
+
+对抗训练\cite{madry2018towards,tramer2020ensemble}是目前最为广泛使用的鲁棒性增强方法。其核心思想是在模型训练过程中，对每个训练样本生成对抗样本并将其加入训练集，从而使模型学习到对扰动具有鲁棒性的特征表示。然而，对抗训练存在计算开销大（通常需要10倍以上的训练时间）、对新型攻击的泛化能力有限、以及可能导致模型在干净样本上的准确率下降等问题。
+
+输入净化方法通过在模型推理之前对输入进行预处理来减弱潜在的对抗扰动。Song等人\cite{song2018pixeldefend}提出了PixelDefend，利用PixelCNN生成模型将对抗样本投影回干净数据的自然流形。Nie等人\cite{nie2022diffpure}提出了DiffPure方法，利用扩散模型的去噪过程来净化对抗样本，其核心思想是对抗扰动可以被前向扩散过程中添加的噪声掩盖，然后通过反向去噪过程恢复近似干净的图像。JPEG有损压缩、高斯模糊滤波、位深度缩减等轻量级防御方法通过破坏图像中的高频信息来降低对抗扰动的效果，具有计算效率高、部署简便等优势，但面对语义级攻击时防御能力有限。
+
+认证防御方法以Cohen等人\cite{cohen2019certified}提出的随机平滑方法为代表，能够为模型在给定扰动半径内的预测一致性提供可证明保证。然而，认证防御通常会降低干净样本准确率，且主要适用于 $L_2$ 范数约束下的扰动场景，难以直接应用于不存在明确扰动范数约束的无限制对抗样本防御。此外，认证防御的推理过程需要对每个输入进行多次随机采样和投票，推理效率低于常规分类模型，限制了其在实时系统中的部署。
+
+\subsection{鲁棒性评估工具研究现状}
+
+在对抗鲁棒性评估平台方面，学术界和工业界已经开发了若干具有代表性的工具。RobustBench\cite{croce2021robustbench}提供了标准化的评估协议、预训练鲁棒模型和公开排行榜，但主要面向 $L_p$ 范数攻击场景，缺少对生成式攻击和AIGC场景的支持。CleverHans\cite{papernot2018cleverhans}是一个模块化的对抗机器学习Python库，提供了多种攻击和防御算法实现，但缺乏端到端的实验流程编排和自动化报告生成功能。Adversarial Robustness Toolbox（ART）\cite{nicolae2018adversarial}是IBM开发的对抗机器学习工具箱，覆盖攻击、防御、检测和认证等多个方面，但其架构偏重算法API层面，缺乏面向AIGC场景的专用评估协议和自动化工作流。
+
+综合分析，现有评估平台主要存在以下四方面局限性：（1）攻击类型局限于 $L_p$ 范数约束下的像素级扰动攻击，缺乏对AIGC生成式语义级攻击的系统性支持；（2）评估维度单一，主要关注鲁棒准确率和攻击成功率，缺少感知质量（LPIPS）、语义一致性（CLIP Score）和分布距离（FID）等多维评估指标；（3）实验流程自动化程度不足，缺乏从配置到报告的端到端编排能力；（4）对扩散净化等新型防御方法的集成支持有限。
+
+\section{研究目标与内容}
+
+针对上述问题，本文的研究目标是围绕 AIGC 场景下扩散式无限制对抗样本的生成与评估，形成一套可解释、可复现、可扩展的候选搜索方法。本文并不声称复现 AdvDiffuser 的梯度注入或对抗修复等全部机制，而是在现有 Stable Diffusion img2img 管线基础上，将候选生成、成功判定、预算控制、失败回退和多指标评估组织为一个清晰的算法流程。平台实现作为该方法的工程载体，用于保证实验配置、随机种子、指标和样本产物能够被完整回溯。具体研究内容包括以下五个方面：
+
+\begin{enumerate}[label=(\arabic*)]
+  \item \textbf{扩散式候选生成建模}：将 Stable Diffusion img2img 管线形式化为从原始样本、提示词、编辑强度、引导系数和随机噪声到候选图像的条件生成算子，分析其与传统 $L_p$ 约束攻击在搜索空间、可解释性和质量约束上的差异。
+  \item \textbf{候选搜索与筛选策略设计}：提出基于候选预算的扩散攻击流程，包含非目标/目标两类成功判定、批内早停、失败回退和 LPIPS 择优规则，使扩散攻击不只是单次图像编辑，而是具有明确预算和选择准则的搜索算法。
+  \item \textbf{多维评估协议构建}：构建覆盖攻击效果、感知变化、语义一致性、分布差异、防御恢复和资源代价的评估体系，避免仅用 ASR 或单一鲁棒准确率解释无限制攻击。
+  \item \textbf{前沿算法路线梳理与可扩展实现接口}：结合 AdvDiff、AdvDiffuser、SCA、AnyAttack 和扩散净化等近期工作，讨论梯度引导、扩散反演、语义一致性约束和视觉语言模型攻击等后续可补实现路线，并在工程结构中保留可扩展接口。
+  \item \textbf{实验验证与分析}：基于ImageNet\cite{deng2009imagenet}子集整理传统攻击、扩散攻击、候选数量、编辑强度、攻防交叉和跨模型实验结果，重点分析扩散式候选搜索的攻击特征和现有防御在生成式编辑攻击下的局限。
+\end{enumerate}
+
+\section{论文组织结构}
+
+本文共分为六章，各章内容安排如下：
+
+第~\ref{chap:intro}~章为绪论，介绍本文的研究背景与意义、研究现状与问题、研究目标与内容，以及论文的组织结构。
+
+第~\ref{chap:related}~章为相关工作，系统回顾传统对抗攻击与防御、无限制对抗样本与生成式攻击、AIGC安全检测与防御、扩散式攻击前沿路线和鲁棒性评估工具的发展，分析现有工作的优势与不足，明确本文的研究切入点。
+
+第~\ref{chap:design}~章为扩散式无限制对抗样本生成与评估方法，形式化定义攻击问题、候选生成算子、成功判定、早停回退、候选选择和多维评估指标，并给出算法流程和图解。
+
+第~\ref{chap:impl}~章为算法实现与实验支撑系统，介绍分类器、生成模型、攻击与防御模块、评估指标和配置化运行机制如何支撑第~\ref{chap:design}~章提出的方法。
+
+第~\ref{chap:experiment}~章为实验与分析，展示传统扰动基线、\methodname 候选搜索、同类攻击方法比较、攻防交互矩阵、关键机制敏感性和跨模型结构分析结果，并进行系统的定性和定量讨论。
+
+第~\ref{chap:conclusion}~章为总结与展望，总结本文的主要方法、实验结论和实现边界，讨论当前工作的局限性并展望未来的研究方向。
+
+% ============================================================
+%  Chapter 2: Related Work
+% ============================================================
+\chapter{相关工作}
+\label{chap:related}
+
+本章围绕“扩散式无限制对抗样本生成与评估”这一核心技术展开。传统 $L_p$ 攻击与输入净化方法主要作为对照基线介绍；无限制对抗样本、生成式攻击和扩散净化构成本文方法的直接背景；鲁棒性评估工具则用于说明本文为何需要把候选预算、样本质量、防御副作用和资源代价纳入同一实验协议。相比宽泛罗列AIGC安全问题，本章重点放在与本文候选搜索方法直接相关的生成机制、约束假设和评价口径上。
+
+\section{传统对抗攻击与防御}
+\label{sec:traditional}
+
+传统对抗攻击以 $L_p$ 范数约束为核心假设：攻击者在原始图像附近寻找一个小扰动 $\delta$，使 $x+\delta$ 仍位于允许扰动集合内但能改变模型预测。Szegedy等人\cite{szegedy2014intriguing}最早揭示了深度网络对微小扰动的脆弱性；Goodfellow等人\cite{goodfellow2015explaining}提出的FGSM用单步梯度符号快速生成扰动；Madry等人\cite{madry2018towards}提出的PGD通过多步迭代和投影获得更强的一阶白盒攻击；Carlini和Wagner\cite{carlini2017towards}进一步将攻击表述为带约束优化问题。这些方法具有清晰数学边界和成熟评测传统，因此本文将FGSM和PGD作为传统扰动基线，用于对比扩散式候选搜索在攻击空间、视觉变化和防御响应上的差异。
+
+防御侧同样形成了若干常用路线。对抗训练\cite{madry2018towards,tramer2020ensemble}通过在训练阶段纳入对抗样本提升模型鲁棒性，但通常计算成本高，并可能牺牲干净样本准确率。输入净化方法在推理前对输入进行变换，例如PixelDefend\cite{song2018pixeldefend}使用生成模型投影输入，JPEG压缩、高斯模糊和位深度缩减则通过破坏高频扰动或量化像素值降低传统扰动效果。认证防御以随机平滑\cite{cohen2019certified}为代表，能在特定范数半径内给出可证明保证，但较难直接覆盖没有固定扰动半径的无限制攻击。因此，本文实验只选取轻量输入变换和扩散净化作为可直接部署的防御对照，并把防御副作用作为重要指标。
+
+\section{无限制对抗样本与生成式攻击}
+\label{sec:unrestricted}
+
+传统对抗样本受 $L_p$ 范数约束，其扰动幅度有明确的数学边界，通常被设计为人眼不可感知的微小扰动。与此不同，无限制对抗样本的早期研究已经将攻击者从小范数扰动约束中释放出来，允许构造任意清晰且语义明确的输入\cite{brown2018unrestricted}，或利用生成模型在数据流形上合成对抗样本\cite{song2018constructing}。在AIGC场景下，这一思想进一步表现为通过语义、风格、纹理或局部结构层面的自然变换生成能够欺骗目标模型的样本。本文标题中的“无限制”采用这一工程定义：评价重点从像素扰动半径转向攻击是否保持视觉自然性、语义可解释性以及是否能在 AIGC 生成/编辑流程中复现。
+
+表~\ref{tab:unrestricted_compare}进一步对比了传统约束攻击与几类生成式无限制攻击的差异。可以看到，现有工作正从 GAN 生成器、扩散采样引导，逐步走向扩散反演、语义一致性约束和视觉语言模型攻击。本文已实现的 \methodname 属于“img2img 候选搜索”路线，它没有使用梯度注入或大规模生成器预训练，但提供了明确的候选预算、成功判定、早停回退和多指标评估机制，可作为后续接入更强攻击算法的基础流程。
+
+\begin{table}[htbp]
+  \centering
+  \caption{无限制对抗样本相关工作的对比}
+  \label{tab:unrestricted_compare}
+  \tablefont
+  \begin{tabularx}{\textwidth}{lXXXX}
+    \toprule
+    工作类型 & 约束形式 & 生成机制 & 主要评价重点 & 与本文关系 \\
+    \midrule
+    FGSM/PGD & $L_p$ 范数球 & 梯度扰动 & ASR、RA & 作为传统基线 \\
+    无限制挑战设定\cite{brown2018unrestricted} & 无固定范数球 & 任意清晰输入 & 覆盖率与高置信误分类 & 概念与评测设定参考 \\
+    生成模型无限制攻击\cite{song2018constructing} & 无固定范数球 & 条件生成模型潜空间搜索 & 攻击成功与样本似然 & 早期生成式路线 \\
+    AI-GAN\cite{bai2021aigan} & 无固定范数球 & GAN生成器 & 攻击成功与视觉自然性 & 生成式攻击参考 \\
+    AdvDiff\cite{dai2023advdiff} & 无固定范数球 & 扩散反向过程对抗引导 & 攻击性能与生成质量 & 后续梯度引导路线 \\
+    AdvDiffuser\cite{chen2023advdiffuser} & 无固定范数球 & Stable Diffusion编辑 & 自然图像编辑攻击 & 扩散攻击方法启发 \\
+    SCA\cite{pan2024sca} & 语义一致性约束 & DDPM反演+MLLM语义引导 & 语义保持与采样效率 & 后续语义约束路线 \\
+    AnyAttack\cite{zhang2024anyattack} & 目标图像/多模态任务 & 自监督目标攻击生成器 & VLM迁移攻击 & 后续多模态扩展路线 \\
+    AIGC检测绕过\cite{xie2025takefake} & 任务相关自然性约束 & 真实感生成/变换 & 检测器绕过率 & 说明AIGC安全场景 \\
+    本文方法 & 配置化候选预算 & SD img2img候选搜索 & ASR、ASR-C、RA、LPIPS、CLIP、FID、资源开销 & 已实现验证主线 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{基于GAN的生成式方法}
+
+Bai等人\cite{bai2021aigan}提出的AI-GAN是基于GAN框架的生成式对抗攻击方法的典型代表。其核心思想是训练一个专用的生成器网络 $G$，以原始干净样本 $x$ 为输入，直接输出对应的对抗样本 $G(x)$。生成器通过联合优化对抗损失（确保攻击成功）和感知损失（保持视觉自然性）来进行训练。AI-GAN的优势在于一旦生成器训练完成，生成对抗样本的推理速度极快，适合大规模攻击场景。但其局限性在于生成器的攻击能力受限于训练数据的分布，对未见过的图像类别可能泛化不足。
+
+\subsection{基于扩散模型的生成式方法}
+
+扩散模型\cite{ho2020denoising}是近年来常用的深度生成模型之一，其核心思想是定义一个前向扩散过程逐步向数据添加噪声，再学习一个反向去噪过程从噪声恢复数据。
+
+\textbf{前向扩散过程。} 给定数据样本 $x_0 \sim q(x_0)$，前向过程在 $T$ 步中逐步添加高斯噪声：
+
+\begin{equation}
+  q(x_t \mid x_{t-1}) = \mathcal{N}\!\left(x_t;\, \sqrt{1-\beta_t}\, x_{t-1},\; \beta_t\, \mathbf{I}\right), \quad t=1,\ldots,T,
+  \label{eq:ddpm_forward_step}
+\end{equation}
+
+其中 $\{\beta_t\}_{t=1}^T$ 为预定义的噪声调度。令 $\alpha_t=1-\beta_t$，$\bar{\alpha}_t=\prod_{s=1}^{t}\alpha_s$，则任意时刻 $t$ 的加噪样本满足闭式分布：
+
+\begin{equation}
+  q(x_t \mid x_0) = \mathcal{N}\!\left(x_t;\, \sqrt{\bar{\alpha}_t}\, x_0,\; (1-\bar{\alpha}_t)\, \mathbf{I}\right),
+  \label{eq:ddpm_forward_closed}
+\end{equation}
+
+亦可写为重参数化采样形式：
+
+\begin{equation}
+  x_t = \sqrt{\bar{\alpha}_t}\, x_0 + \sqrt{1-\bar{\alpha}_t}\, \epsilon, \quad \epsilon\sim\mathcal{N}(0,\mathbf{I}).
+  \label{eq:ddpm_forward_reparam}
+\end{equation}
+
+\textbf{反向去噪过程。} DDPM 用参数化网络 $\epsilon_\theta(x_t,t)$ 预测噪声分量，反向转移分布为：
+
+\begin{equation}
+  p_\theta(x_{t-1} \mid x_t) = \mathcal{N}\!\left(x_{t-1};\, \mu_\theta(x_t,t),\; \tilde{\beta}_t\, \mathbf{I}\right),
+  \label{eq:ddpm_reverse}
+\end{equation}
+
+其中均值由噪声预测网络给出：
+
+\begin{equation}
+  \mu_\theta(x_t,t)=\frac{1}{\sqrt{\alpha_t}}\!\left(x_t - \frac{\beta_t}{\sqrt{1-\bar{\alpha}_t}}\,\epsilon_\theta(x_t,t)\right),
+  \label{eq:ddpm_reverse_mean}
+\end{equation}
+
+方差为 $\tilde{\beta}_t = \frac{1-\bar{\alpha}_{t-1}}{1-\bar{\alpha}_t}\beta_t$。训练目标为简化的噪声预测损失：
+\begin{equation}
+  \mathcal{L}_{\text{simple}} = \mathbb{E}_{t,x_0,\epsilon}\!\left[\|\epsilon - \epsilon_\theta(x_t,t)\|^2\right].
+\end{equation}
+
+\textbf{潜空间扩散（Latent Diffusion）。} Stable Diffusion\cite{rombach2022highresolution}将上述过程迁移到自编码器的潜空间中执行。设编码器为 $\mathcal{E}$，解码器为 $\mathcal{D}$，潜变量 $z_0=\mathcal{E}(x_0)$，则扩散过程在 $z$ 空间进行，生成结果为 $\hat{x}_0 = \mathcal{D}(\hat{z}_0)$。img2img 管线对输入图像先编码再加噪到时刻 $t_s=\lfloor s\cdot T\rfloor$（$s$ 为编辑强度），然后从 $z_{t_s}$ 开始执行条件去噪，最终解码得到编辑后的图像。
+
+Chen等人\cite{chen2023advdiffuser}提出的AdvDiffuser是基于扩散模型的生成式对抗攻击方法的重要代表。AdvDiffuser利用Stable Diffusion\cite{rombach2022highresolution}提供的img2img管线，在扩散过程中注入目标分类器的梯度信号，引导生成过程产生既能有效欺骗分类器又保持视觉自然性的对抗样本。AdvDiffuser的生成过程可以概括表示为：
+
+\begin{equation}
+  x_{\text{adv}} = \text{SD}_{\text{img2img}}(x, p, s; \nabla_x \mathcal{L}_{\text{target}})
+  \label{eq:advdiffuser}
+\end{equation}
+
+其中 $p$ 为引导文本提示（text prompt），$s$ 为变换强度参数（strength），$\nabla_x \mathcal{L}_{\text{target}}$ 为目标分类器提供的梯度信号。变换强度 $s$ 控制了生成图像与原始图像之间的偏离程度：$s$ 值越大，生成结果与原图差异越大，攻击成功的概率也越高，但同时图像的语义内容可能发生较大变化。
+
+Xie等人\cite{xie2025takefake}进一步研究了面向AIGC检测系统的对抗攻击，提出了“Take Fake as Real”方法，通过生成具有真实图像统计特征的对抗样本来规避AI生成内容检测系统的检测。这项工作表明AIGC检测系统自身也存在被对抗攻击绕过的风险，进一步说明了构建系统化攻防验证体系的必要性。
+
+\subsection{扩散反演与多模态前沿路线}
+
+除直接调用 img2img 管线外，近期工作还在三个方向上推进无限制攻击算法。第一类是对扩散采样过程加入更显式的对抗引导，例如 AdvDiff\cite{dai2023advdiff}将目标分类器梯度整合到反向生成过程中，使攻击目标不仅依赖随机候选搜索，而是直接影响去噪轨迹。第二类是使用扩散反演获得与原图对应的潜变量或噪声轨迹，再在潜空间中执行语义保持的编辑；SCA\cite{pan2024sca}即利用 DDPM 反演和多模态大模型提供语义引导，以减少无限制攻击中常见的类别语义漂移。第三类是从传统分类模型扩展到视觉语言模型，AnyAttack\cite{zhang2024anyattack}将任意图像作为目标，构造可迁移到图文检索、图像描述和多模态分类等任务的目标攻击。
+
+这些前沿算法与本文已实现方法存在清晰的递进关系。本文当前实验采用候选搜索而非梯度引导，优势是实现成本低、可复现性强、与现有 Stable Diffusion img2img 接口兼容；不足是目标攻击能力弱、语义约束较粗、采样效率受候选预算限制。第~\ref{chap:design}~章因此把本文方法抽象为“生成算子+候选集合+选择准则”的形式，使未来接入 AdvDiff 式梯度引导、SCA 式反演轨迹或 AnyAttack 式多模态目标时，只需替换候选生成算子和成功判定函数，而无需改变整体评估协议。
+
+\section{AIGC安全检测与防御}
+\label{sec:aigc_defense}
+
+\subsection{扩散净化方法}
+
+Nie等人\cite{nie2022diffpure}提出的DiffPure方法是利用扩散模型进行对抗防御的开创性工作。DiffPure的核心洞察是：对抗扰动作为人为添加的非自然信号，可以被扩散模型的前向过程中添加的高斯噪声所淹没，随后通过反向去噪过程恢复出近似干净的图像。DiffPure的处理过程可以分为两个步骤：
+
+\begin{equation}
+  x_t = \sqrt{\bar{\alpha}_t}\,x_{\text{adv}} + \sqrt{1-\bar{\alpha}_t}\,\epsilon,\quad
+  \hat{x} = \textsc{ReverseDDPM}(x_t;\, t\to 0),
+  \label{eq:diffpure}
+\end{equation}
+
+其中 $\bar{\alpha}_t$ 为扩散噪声调度中的累计信号保留系数，$\epsilon \sim \mathcal{N}(0, I)$ 为标准高斯噪声，$\textsc{ReverseDDPM}$ 表示从时刻 $t$ 到 0 的反向去噪过程。噪声水平的选择至关重要：过小的噪声无法有效掩盖对抗扰动，过大的噪声则会破坏图像的原始语义信息。DiffPure在面对传统 $L_p$ 范数攻击时展现了良好的防御效果，但其高计算开销（需要多步去噪迭代）和对语义级攻击的防御局限性是主要问题。
+
+Kang等人\cite{liu2024diffender}提出了Diffender方法，专门针对对抗补丁攻击（Adversarial Patch Attack）设计了基于扩散模型的防御方案，展现了扩散模型在对抗防御领域的广泛应用潜力。
+
+\subsection{轻量级防御方法}
+
+轻量级防御方法通过简单而高效的输入变换来削弱对抗扰动的效果，具有计算开销低、部署简便的优势：
+
+\begin{itemize}
+  \item \textbf{JPEG压缩}：JPEG有损压缩通过离散余弦变换（DCT）和量化操作来压缩图像数据，在此过程中高频信息（包括对抗扰动中的高频分量）会被部分丢弃。压缩质量因子（quality factor）越低，信息丢失越多，对扰动的破坏效果越强，但同时也会降低图像的视觉质量。
+  \item \textbf{高斯模糊}：高斯模糊通过对图像应用高斯核进行卷积滤波，实现低通滤波的效果，平滑图像中的高频成分。核大小和标准差共同决定了模糊的程度和范围。
+  \item \textbf{位深度缩减}：位深度缩减通过将图像的颜色精度从标准的8位（256级灰度）降低到更少的位数（如4位，16级灰度），对像素值进行粗粒度量化。这种量化操作能够有效破坏像素级别的细微对抗扰动，但对语义级别的大范围变换基本无效。
+\end{itemize}
+
+\section{鲁棒性评估工具与实验协议}
+\label{sec:platforms}
+
+对抗鲁棒性研究离不开稳定的评估工具。RobustBench\cite{croce2021robustbench}提供标准化排行榜和鲁棒模型，适合 $L_p$ 范数攻击下的基准比较；CleverHans\cite{papernot2018cleverhans}和ART\cite{nicolae2018adversarial}提供丰富的攻击、防御和检测API，适合作为算法参考实现。本文不把工具覆盖范围作为主贡献，而是从这些生态中抽取评估经验，补充面向扩散式无限制攻击的实验口径：除模型是否被误分类外，还同步记录候选预算、视觉变化幅度、语义一致性、防御副作用和资源代价。这样的协议为后续接入AdvDiff、AdvDiffuser、SCA或AnyAttack等更强候选生成算子提供统一比较口径，也避免把“能否运行某个攻击库”误当作安全结论。
+
+% ============================================================
+%  Chapter 3: Method
+% ============================================================
+\chapter{扩散式无限制对抗样本生成与评估方法}
+\label{chap:design}
+
+\section{问题定义}
+
+设图像分类器为 $f_\theta:\mathcal{X}\rightarrow\mathcal{Y}$，输入图像为 $x\in[0,1]^{C\times H\times W}$，真实标签为 $y$。传统对抗攻击通常在扰动集合 $\mathcal{S}_p(\epsilon)=\{\delta:\|\delta\|_p\leq\epsilon\}$ 内搜索 $x+\delta$，其优化目标可写为
+
+\begin{equation}
+  \max_{\delta \in \mathcal{S}_p(\epsilon)}
+  \mathcal{L}(f_\theta(x+\delta),y).
+  \label{eq:lp_attack_objective}
+\end{equation}
+
+这种形式适合描述像素级扰动，但难以描述 AIGC 图像编辑中常见的颜色、纹理、局部结构和风格变化。本文将扩散式无限制攻击定义为在生成模型诱导的自然图像邻域中搜索候选样本。
+
+\subsection{候选生成算子的形式化定义}
+
+基于第~\ref{chap:related}~章中 Stable Diffusion 的潜空间扩散框架，本文将 img2img 候选生成过程形式化为四步组合算子。给定原始图像 $x_i$、提示词 $p$、编辑强度 $s\in(0,1]$、引导系数 $g$ 和随机噪声 $\xi_k$：
+
+\textbf{步骤一：潜空间编码。} 使用预训练自编码器将输入映射到潜空间：
+\begin{equation}
+  z_0 = \mathcal{E}(x_i).
+  \label{eq:img2img_encode}
+\end{equation}
+
+\textbf{步骤二：前向加噪。} 由编辑强度 $s$ 确定加噪起点 $t_s = \lfloor s \cdot T \rfloor$，直接从 $z_0$ 采样到时刻 $t_s$：
+\begin{equation}
+  z_{t_s} = \sqrt{\bar{\alpha}_{t_s}}\, z_0 + \sqrt{1-\bar{\alpha}_{t_s}}\, \xi_k, \quad \xi_k \sim \mathcal{N}(0,\mathbf{I}).
+  \label{eq:img2img_noise}
+\end{equation}
+
+\textbf{步骤三：条件去噪。} 在文本提示 $p$ 和引导系数 $g$ 的控制下，执行 $t_s$ 步反向去噪：
+\begin{equation}
+  \hat{z}_0 = \textsc{Denoise}_\theta\!\left(z_{t_s},\, p,\, g;\; t_s \to 0\right),
+  \label{eq:img2img_denoise}
+\end{equation}
+其中去噪过程使用无分类器引导（Classifier-Free Guidance）调节噪声预测。按 diffusers 中 \texttt{guidance\_scale} 的实现口径，若 $g$ 表示引导系数，则
+\begin{equation}
+  \hat{\epsilon}_\theta
+  = \epsilon_\theta(z_t,\varnothing,t)
+  + g\bigl(\epsilon_\theta(z_t,p,t)-\epsilon_\theta(z_t,\varnothing,t)\bigr)
+  = g\,\epsilon_\theta(z_t,p,t) + (1-g)\,\epsilon_\theta(z_t,\varnothing,t).
+  \label{eq:cfg_diffusers}
+\end{equation}
+若另以 $w$ 表示相对条件预测的额外外推强度，则同一关系也可写为 $(1+w)\epsilon_{\text{cond}}-w\epsilon_{\text{uncond}}$，二者满足 $g=1+w$。
+
+\textbf{步骤四：潜空间解码。} 将去噪后的潜变量映射回图像空间：
+\begin{equation}
+  x_i^{(k)} = \mathcal{D}(\hat{z}_0).
+  \label{eq:img2img_decode}
+\end{equation}
+
+将上述四步简记为候选生成算子：
+\begin{gather}
+  x_i^{(k)} = G_\phi(x_i,p,s,g,\xi_k) \triangleq \mathcal{D}\!\left(\textsc{Denoise}_\theta\!\left(\sqrt{\bar{\alpha}_{t_s}}\,\mathcal{E}(x_i) + \sqrt{1-\bar{\alpha}_{t_s}}\,\xi_k,\; p,g\right)\right), \label{eq:diffusion_candidate} \\
+  k=1,\ldots,N. \notag
+\end{gather}
+
+其中 $N$ 是候选预算。与式~\eqref{eq:lp_attack_objective}不同，式~\eqref{eq:diffusion_candidate}没有显式的范数球约束；其约束由生成模型、提示词、编辑强度和候选预算共同决定。编辑强度 $s$ 在此框架中具有明确的物理意义：它控制加噪深度 $t_s$，$s$ 越大则 $z_{t_s}$ 中原始图像信息被噪声覆盖越多，去噪过程拥有更大的自由度重构图像内容，从而产生更大的语义偏离。因此，扩散式无限制攻击的核心不只是“生成一张图片”，而是如何在候选集合中判断攻击成功、控制查询成本、选择最终对抗样本，并用合适指标解释样本质量和防御效果。
+
+图~\ref{fig:paradigm_compare}将两类攻击抽象为统一的“输入--处理--候选/扰动--输出”四阶段流程，并标注各自的搜索空间、约束形式和评估维度，凸显二者在生成机制和评价口径上的差异。
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{%
+  \begin{tikzpicture}[
+    font=\figmainfont, >=Stealth,
+    block/.style={draw=#1!60, fill=#1!10, minimum width=2.55cm, minimum height=1.0cm,
+      align=center, line width=0.6pt},
+    arrow/.style={->, line width=0.95pt, draw=pgfgray!70,
+      >={Stealth[length=5pt, width=4pt]}},
+    sectitle/.style={font=\figmainfont\bfseries, text=#1!85!black, anchor=west},
+    annot/.style={font=\figsubfont, text=pgfgray!90, align=center}
+  ]
+    % ============================================================
+    % Top row: traditional L_p attack pipeline
+    % ============================================================
+    \node[sectitle=pgfblue] at (0, 2.8) {传统 $L_p$ 约束攻击};
+    \node[block=pgfblue] (t1) at (1.6, 1.6) {原始图像\\{\figsubfont $x$}};
+    \node[block=pgfblue] (t2) at (5.4, 1.6) {梯度方向\\{\figsubfont $\mathrm{sign}\bigl(\nabla_{\!x}\mathcal{L}\bigr)$}};
+    \node[block=pgfblue] (t3) at (9.2, 1.6) {范数球投影\\{\figsubfont $\Pi_{\mathcal{S}_p(\epsilon)}$}};
+    \node[block=pgfblue] (t4) at (13.0, 1.6) {对抗样本\\{\figsubfont $x+\delta$}};
+    \draw[arrow, pgfblue!70] (t1) -- (t2);
+    \draw[arrow, pgfblue!70] (t2) -- (t3);
+    \draw[arrow, pgfblue!70] (t3) -- (t4);
+    \node[annot] at (7.3, 0.55) {搜索空间为 $L_p$ 范数球 $\mathcal{S}_p(\epsilon)=\{\delta:\|\delta\|_p\le\epsilon\}$，对扰动 $\delta$ 施加显式约束};
+    \node[annot] at (7.3, 0.05) {评估指标：ASR、RA};
+
+    % Subtle horizontal separator between the two pipelines
+    \draw[pgfgray!30, line width=0.4pt] (0, -0.6) -- (14.3, -0.6);
+
+    % ============================================================
+    % Bottom row: diffusion-based unrestricted attack pipeline
+    % ============================================================
+    \node[sectitle=pgforange] at (0, -1.3) {扩散式无限制攻击};
+    \node[block=pgforange] (d1) at (1.6, -2.5) {原始图像\\{\figsubfont $x$}};
+    \node[block=pgforange] (d2) at (5.4, -2.5) {扩散编辑算子\\{\figsubfont $G_\phi(x,p,s,g,\xi)$}};
+    \node[block=pgforange] (d3) at (9.2, -2.5) {候选集合\\{\figsubfont $\{x^{(k)}\}_{k=1}^{N}$}};
+    \node[block=pgforange] (d4) at (13.0, -2.5) {LPIPS 择优\\{\figsubfont $x_{\mathrm{adv}}$}};
+    \draw[arrow, pgforange!75] (d1) -- (d2);
+    \draw[arrow, pgforange!75] (d2) -- (d3);
+    \draw[arrow, pgforange!75] (d3) -- (d4);
+    \node[annot] at (7.3, -3.65) {搜索空间为生成流形 $\mathcal{C}=\{G_\phi(x,p,s,g,\xi_k)\}_{k=1}^{N}$，由候选预算 $N$ 与编辑强度 $s$ 隐式约束};
+    \node[annot] at (7.3, -4.15) {评估指标：ASR、RA、LPIPS、CLIP、FID 与资源代价};
+  \end{tikzpicture}%
+  }
+  \caption{传统 $L_p$ 约束攻击与扩散式无限制攻击的算法流程对比}
+  \label{fig:paradigm_compare}
+\end{figure}
+
+\section{候选搜索算法}
+
+本文提出的 \methodname 方法由候选生成、成功判定、早停控制、失败回退和最终选择五个部分构成。整体流程如图~\ref{fig:method_flow}所示。图中的扩散编辑器可以是当前实现中的 Stable Diffusion img2img，也可以在后续替换为 AdvDiff 式梯度引导采样、SCA 式扩散反演轨迹或视觉语言模型攻击生成器；只要候选集合和成功判定接口保持一致，评估协议即可复用。
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{0.98\textwidth}{!}{\pgfmethodfigure}
+  \caption{扩散式候选搜索攻击方法示意图}
+  \label{fig:method_flow}
+\end{figure}
+
+\subsection{成功判定}
+
+对于非目标攻击，本文使用“预测发生变化”作为候选成功条件。令原始预测为 $\hat{y}_i=f_\theta(x_i)$，候选预测为 $\hat{y}_i^{(k)}=f_\theta(x_i^{(k)})$，则成功指示函数为
+
+\begin{equation}
+  S_i^{(k)} =
+  \indicator{\hat{y}_i^{(k)} \neq \hat{y}_i}.
+  \label{eq:untargeted_success}
+\end{equation}
+
+对于目标攻击，给定目标类别 $t$，成功指示函数改为
+
+\begin{equation}
+  S_i^{(k)} =
+  \indicator{\hat{y}_i^{(k)} = t}.
+  \label{eq:targeted_success}
+\end{equation}
+
+本文默认评估采用非目标设定。目标类别设定作为边界分析结果保留，其较低成功率说明：直接复用通用提示词和 img2img 候选搜索并不足以稳定命中特定类别，后续若要强化目标类别命中，应引入类别条件提示、梯度引导或视觉语言模型目标对齐机制。
+
+\subsection{候选选择准则}
+
+对每个样本 $x_i$，算法维护成功候选集合
+
+\begin{equation}
+  \mathcal{C}_i^+ =
+  \left\{x_i^{(k)} \mid S_i^{(k)}=1,\; k\leq N_i\right\},
+  \label{eq:success_set}
+\end{equation}
+
+其中 $N_i$ 为该样本实际消耗的候选次数。若 $\mathcal{C}_i^+$ 非空，本文选择 LPIPS 距离最大的成功候选作为最终对抗样本：
+
+\begin{equation}
+  x_{i,\text{adv}} =
+  \arg\max_{z\in\mathcal{C}_i^+}
+  d_{\text{LPIPS}}(x_i,z).
+  \label{eq:lpips_selection}
+\end{equation}
+
+该准则的目的不是追求最小扰动，而是体现无限制攻击与传统 $L_p$ 攻击的差异：在保持生成图像自然性的前提下，成功候选中更大的感知变化往往意味着更充分的语义或纹理编辑，也更能暴露输入净化类防御的局限。为了避免误解，本文不把 LPIPS 最大化解释为通用最优目标；它是当前实验中用于选择代表性成功候选的工程准则。
+
+\subsection{早停与失败回退}
+
+扩散模型推理成本较高，如果固定为所有样本生成 $N$ 个候选，会浪费大量已经成功样本上的查询。因此，\methodname 在批次层面采用早停机制：每轮候选生成后更新所有样本的成功标记，若批次中每个样本都至少出现一个成功候选，则停止后续候选生成。早停机制使配置中的 $N$ 成为候选上限而不是每个样本的固定查询次数。
+
+若部分样本在主循环结束后仍未成功，算法对失败子集执行回退生成。回退阶段将编辑强度提高到
+
+\begin{equation}
+  s_{\text{fb}} = \min(1, s+\Delta s),
+  \label{eq:fallback_strength}
+\end{equation}
+
+并最多额外尝试 $M$ 个候选。回退只作用于失败样本，因此不会改变已经成功样本的候选选择。该机制体现了攻击预算的分层思想：主循环使用保守强度保证整体自然性，回退阶段只在必要时提高编辑幅度以增加成功概率。
+
+\begin{algorithm}[H]
+  \caption{\methodname：扩散式候选搜索攻击}
+  \label{alg:diffsearch}
+  \begin{algorithmic}[1]
+    \Require 图像批次 $X$，标签 $Y$，分类器 $f_\theta$，扩散编辑器 $G_\phi$，候选预算 $N$，回退预算 $M$
+    \Ensure 对抗样本 $X_{\text{adv}}$，成功标记 $S$，查询次数 $Q$
+    \State 初始化 $X_{\text{adv}}\gets X$，$S_i\gets \textbf{false}$，$Q_i\gets 0$，最佳LPIPS分数 $B_i\gets -1$
+    \State 计算原始预测 $\hat{Y}\gets f_\theta(X)$
+    \For{$k=1$ \textbf{to} $N$}
+      \State 生成候选 $Z\gets G_\phi(X,p,s,g,\xi_k)$
+      \State 计算候选预测 $\hat{Z}\gets f_\theta(Z)$ 和 LPIPS 分数 $D\gets d_{\text{LPIPS}}(X,Z)$
+      \ForAll{样本 $i$}
+        \State $Q_i\gets Q_i+1$
+        \If{$\textsc{Success}(\hat{Z}_i,\hat{Y}_i,Y_i)$ \textbf{and} $D_i>B_i$}
+          \State $X_{\text{adv},i}\gets Z_i$，$S_i\gets \textbf{true}$，$B_i\gets D_i$
+        \EndIf
+      \EndFor
+      \If{所有 $S_i$ 均为 \textbf{true}}
+        \State \textbf{break}
+      \EndIf
+    \EndFor
+    \ForAll{仍失败的样本 $i$}
+      \For{$m=1$ \textbf{to} $M$}
+        \State 用 $s_{\text{fb}}=\min(1,s+\Delta s)$ 生成回退候选并更新 $X_{\text{adv},i},S_i,Q_i$
+        \If{$S_i$ 为 \textbf{true}}
+          \State \textbf{break}
+        \EndIf
+      \EndFor
+    \EndFor
+    \State \Return $X_{\text{adv}},S,Q$
+  \end{algorithmic}
+\end{algorithm}
+
+\subsection{查询复杂度分析}
+
+算法~\ref{alg:diffsearch}的查询开销取决于早停和回退机制的交互。设批次中共有 $n$ 个样本，单个候选对生成器的查询成本为 $c_G$（含扩散去噪），对分类器的查询成本为 $c_f$，LPIPS 评估成本为 $c_L$。定义单个样本在第 $k$ 轮首次成功的概率为 $p_k(s)$，则：
+
+\textbf{最优情况。} 若所有样本在第 1 轮即成功（$p_1(s) = 1$），早停立即触发：
+\begin{equation}
+  Q_{\text{best}} = n \cdot (c_G + c_f + c_L).
+  \label{eq:query_best}
+\end{equation}
+
+\textbf{最坏情况。} 若所有样本在主循环均失败，且回退阶段全部耗尽预算：
+\begin{equation}
+  Q_{\text{worst}} = n \cdot (N + M) \cdot (c_G + c_f + c_L).
+  \label{eq:query_worst}
+\end{equation}
+
+\textbf{期望情况。} 设样本独立，令每轮成功概率为常数 $p$。若单个样本的首次成功轮次为几何随机变量 $T_i$，主循环最多查询 $N$ 轮，则截断查询轮次 $K_i=\min(T_i,N)$ 的期望为
+
+\begin{equation}
+  \mathbb{E}[K_i] = \sum_{k=1}^{N}\Pr(T_i \ge k)
+  = \frac{1-(1-p)^N}{p}.
+  \label{eq:query_single_expected}
+\end{equation}
+
+在批内早停机制下，主循环的实际总轮次等于 $K_{\max}=\max_i K_i$。对 $n$ 个独立样本，批次期望轮次为
+
+\begin{equation}
+  \mathbb{E}[K_{\max}] = \sum_{k=1}^{N}\!\left[1 - \bigl(1-(1-p)^{k-1}\bigr)^n\right].
+  \label{eq:query_expected}
+\end{equation}
+
+该式反映了批量早停的关键特征：当每轮成功概率 $p$ 较高时（例如本文实验中 $s=0.7$ 对应约 $p\geq 0.9$），即使批量较大，期望轮次也通常低于候选上限 $N$。回退阶段只对主循环后仍失败的样本执行。若回退阶段单轮成功概率为 $p_{\text{fb}}$，则期望额外查询可近似写为 $(1-p)^N \cdot n \cdot \{1-(1-p_{\text{fb}})^M\}/p_{\text{fb}}$；在主循环成功率较高时，这一项相对较小。
+
+\section{多维评估协议}
+
+无限制攻击的评价不能只看误分类比例。一方面，攻击样本可能通过过强编辑改变原始语义，从而获得形式上的高 ASR；另一方面，防御方法可能通过严重破坏干净输入来提高部分鲁棒准确率。因此，本文使用攻击效果、样本质量、防御效果和资源代价四组指标共同刻画方法表现。
+
+攻击成功率定义为
+
+\begin{equation}
+  \text{ASR} = \frac{1}{n}\sum_{i=1}^{n} S_i.
+  \label{eq:asr}
+\end{equation}
+
+由于部分干净样本在攻击前已经被模型误分类，本文同时报告仅干净正确样本上的攻击成功率：
+
+\begin{equation}
+  \text{ASR-C} =
+  \frac{\sum_{i=1}^{n} S_i\cdot \indicator{f_\theta(x_i)=y_i}}
+       {\sum_{i=1}^{n} \indicator{f_\theta(x_i)=y_i}}.
+  \label{eq:asrc}
+\end{equation}
+
+对于防御函数 $D_\psi$，鲁棒准确率和干净准确率下降分别定义为
+
+\begin{equation}
+  \text{RA}(D_\psi) =
+  \frac{1}{n}\sum_{i=1}^{n}
+  \indicator{f_\theta(D_\psi(x_{i,\text{adv}}))=y_i},
+  \label{eq:ra}
+\end{equation}
+
+\begin{equation}
+  \Delta_{\text{clean}}(D_\psi) =
+  \text{Acc}(X)-\text{Acc}(D_\psi(X)).
+  \label{eq:clean_drop}
+\end{equation}
+
+样本质量维度包含 LPIPS\cite{zhang2018unreasonable}、CLIP Score\cite{radford2021learning} 和 FID\cite{heusel2017gans} 三组指标，每组具有明确的数学定义。
+
+\textbf{LPIPS（Learned Perceptual Image Patch Similarity）\cite{zhang2018unreasonable}。} 设预训练特征网络 $\Phi$ 在第 $l$ 层输出归一化特征图 $\hat{\Phi}^l(x) \in \mathbb{R}^{H_l\times W_l\times C_l}$，则 LPIPS 距离定义为
+
+\begin{equation}
+  d_{\text{LPIPS}}(x, x') = \sum_{l} \frac{1}{H_l W_l} \sum_{h,w} \bigl\|w_l \odot \bigl(\hat{\Phi}^l_{h,w}(x) - \hat{\Phi}^l_{h,w}(x')\bigr)\bigr\|_2^2,
+  \label{eq:lpips_def}
+\end{equation}
+
+其中 $w_l$ 为各层学习权重。本文使用 AlexNet 作为 $\Phi$，数值越大表示感知差异越大。
+
+\textbf{CLIP Score\cite{radford2021learning}。} 利用 CLIP 模型的图像编码器 $E_{\text{img}}$ 和文本编码器 $E_{\text{txt}}$，对生成样本 $x'$ 与通用提示词 $p$ 计算图文一致性：
+
+\begin{equation}
+  \text{CLIP}(x', p) = \cos\!\left(E_{\text{img}}(x'),\, E_{\text{txt}}(p)\right) = \frac{E_{\text{img}}(x')^\top E_{\text{txt}}(p)}{\|E_{\text{img}}(x')\| \cdot \|E_{\text{txt}}(p)\|}.
+  \label{eq:clip_def}
+\end{equation}
+
+\textbf{FID（Fréchet Inception Distance）\cite{heusel2017gans}。} 设干净样本和对抗样本的 Inception 特征分别服从 $\mathcal{N}(\mu_r, \Sigma_r)$ 和 $\mathcal{N}(\mu_g, \Sigma_g)$，则
+
+\begin{equation}
+  \text{FID} = \|\mu_r - \mu_g\|_2^2 + \operatorname{Tr}\!\left(\Sigma_r + \Sigma_g - 2\left(\Sigma_r \Sigma_g\right)^{1/2}\right).
+  \label{eq:fid_def}
+\end{equation}
+
+本文实现使用 \texttt{feature=64} 维 Inception 特征，仅用于同一实验内部的相对比较。
+
+\subsection{防御有效性判定}
+
+在无限制攻击场景下，防御方法需要同时满足两个条件：恢复对抗样本的正确分类（RA），以及不过多损害干净样本性能。本文定义防御 $D_\psi$ 相对于攻击方法 $A$ 的\textbf{净鲁棒收益}为
+
+\begin{equation}
+  \text{NRG}(D_\psi, A) = \text{RA}(D_\psi) - \Delta_{\text{clean}}(D_\psi).
+  \label{eq:nrg}
+\end{equation}
+
+直觉上，$\text{NRG} > 0$ 意味着防御恢复的对抗鲁棒准确率超过了其对干净输入造成的准确率损失。进一步，考虑防御的计算代价后，定义\textbf{代价调整鲁棒性}为
+
+\begin{equation}
+  \text{CAR}(D_\psi, A) = \frac{\text{NRG}(D_\psi, A)}{\log(2 + T_{D_\psi})},
+  \label{eq:car}
+\end{equation}
+
+其中 $T_{D_\psi}$ 为防御处理延迟（秒）。分母采用 $\log(2+T_{D_\psi})$ 是为了避免 $T<1$s 的轻量防御因 $\log(1+T)$ 过小而被异常放大。该指标将鲁棒性恢复与计算成本联合考量：对于接近零延迟的轻量防御，分母接近 $\log 2 \approx 0.7$，NRG 基本保留；对于扩散净化等高延迟防御（$T\approx 138$s），分母约 $\log 140 \approx 4.9$，即使 NRG 为正，CAR 也会被明显衰减。
+
+资源代价被表示为向量
+
+\begin{equation}
+  \mathbf{c} =
+  (\bar{q}, T, M_{\text{gpu}}, M_{\text{cpu}}),
+  \label{eq:cost_vector}
+\end{equation}
+
+其中 $\bar{q}$ 为平均查询次数，$T$ 为处理延迟，$M_{\text{gpu}}$ 和 $M_{\text{cpu}}$ 分别为 GPU 显存和 CPU RSS 峰值。该代价向量使扩散攻击和扩散净化的计算负担能够与攻击效果一起被分析。
+
+图~\ref{fig:eval_protocol}以四象限视角总结了上述多维评估协议的结构。
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[font=\figmainfont, >=Stealth]
+    \def\qw{3.6}  % quadrant width
+    \def\qh{2.0}  % quadrant height
+    \def\hgap{1.2} % horizontal gap between left/right quadrants
+    \def\vgap{1.2} % vertical gap between top/bottom quadrants
+    \def\xL{-\qw-\hgap/2}
+    \def\xR{\hgap/2}
+    \def\yT{\vgap/2}
+    \def\yB{-\qh-\vgap/2}
+    % Quadrant backgrounds
+    \fill[pgfblue!5] (\xL,\yT) rectangle (\xL+\qw,\yT+\qh);
+    \fill[pgforange!5] (\xR,\yT) rectangle (\xR+\qw,\yT+\qh);
+    \fill[pgfgreen!5] (\xL,\yB) rectangle (\xL+\qw,\yB+\qh);
+    \fill[pgfpurple!5] (\xR,\yB) rectangle (\xR+\qw,\yB+\qh);
+    % Quadrant borders
+    \draw[pgfblue!35] (\xL,\yT) rectangle (\xL+\qw,\yT+\qh);
+    \draw[pgforange!35] (\xR,\yT) rectangle (\xR+\qw,\yT+\qh);
+    \draw[pgfgreen!35] (\xL,\yB) rectangle (\xL+\qw,\yB+\qh);
+    \draw[pgfpurple!35] (\xR,\yB) rectangle (\xR+\qw,\yB+\qh);
+    % Quadrant titles
+    \node[font=\figmainfont\bfseries, text=pgfblue!80] at (\xL+\qw/2, \yT+\qh-0.25) {攻击效果};
+    \node[font=\figmainfont\bfseries, text=pgforange!80] at (\xR+\qw/2, \yT+\qh-0.25) {样本质量};
+    \node[font=\figmainfont\bfseries, text=pgfgreen!75!black] at (\xL+\qw/2, \yB+\qh-0.25) {防御效果};
+    \node[font=\figmainfont\bfseries, text=pgfpurple!80] at (\xR+\qw/2, \yB+\qh-0.25) {资源代价};
+    % Content
+    \node[font=\figsubfont, align=left, anchor=north west] at (\xL+0.2, \yT+\qh-0.55) {%
+      $\bullet$ ASR（总体攻击成功率）\\
+      $\bullet$ ASR-C（仅正确样本）\\
+      $\bullet$ RA（鲁棒准确率）};
+    \node[font=\figsubfont, align=left, anchor=north west] at (\xR+0.2, \yT+\qh-0.55) {%
+      $\bullet$ LPIPS（感知差异）\\
+      $\bullet$ CLIP Score（语义一致性）\\
+      $\bullet$ FID（分布距离）};
+    \node[font=\figsubfont, align=left, anchor=north west] at (\xL+0.2, \yB+\qh-0.55) {%
+      $\bullet$ $\text{RA}(D_\psi)$（防御后准确率）\\
+      $\bullet$ $\Delta_{\text{clean}}$（干净下降）};
+    \node[font=\figsubfont, align=left, anchor=north west] at (\xR+0.2, \yB+\qh-0.55) {%
+      $\bullet$ $\bar{q}$（平均查询次数）\\
+      $\bullet$ $T$（延迟）\\
+      $\bullet$ $M_{\text{gpu}},M_{\text{cpu}}$（显存/内存）};
+    % Central label
+    \node[draw=pgfgray!40, fill=white,
+      font=\figmainfont\bfseries, inner sep=4pt, text=pgfgray!70,
+      blur shadow={shadow blur steps=4, shadow xshift=0.3pt, shadow yshift=-0.3pt,
+                   shadow blur radius=0.8pt, shadow opacity=12}]
+      (evalcenter) at (0, 0) {多维评估};
+    % Connectors between center and quadrants (to inner-side midpoints)
+    \draw[pgfgray!55, line width=0.8pt, dashed] (evalcenter.north west) -- (\xL+\qw/2, \yT);
+    \draw[pgfgray!55, line width=0.8pt, dashed] (evalcenter.north east) -- (\xR+\qw/2, \yT);
+    \draw[pgfgray!55, line width=0.8pt, dashed] (evalcenter.south west) -- (\xL+\qw/2, \yB+\qh);
+    \draw[pgfgray!55, line width=0.8pt, dashed] (evalcenter.south east) -- (\xR+\qw/2, \yB+\qh);
+  \end{tikzpicture}
+  \caption{多维评估协议的四象限结构}
+  \label{fig:eval_protocol}
+\end{figure}
+
+\subsection{多种子聚合协议}
+
+为降低随机种子对评估结果的影响，本文对每组实验使用 $R$ 个随机种子重复运行，并按照算法~\ref{alg:multiseed}对结果进行聚合。该协议保证论文中报告的所有指标均附有标准差，读者可以据此判断结果的稳定性。
+
+\begin{algorithm}[H]
+  \caption{多种子聚合协议}
+  \label{alg:multiseed}
+  \begin{algorithmic}[1]
+    \Require 评估配置 $\mathcal{C}$，种子集合 $\{r_1,\ldots,r_R\}$，指标函数集合 $\{m_1,\ldots,m_J\}$
+    \Ensure 聚合指标 $\bar{m}_j \pm \sigma_j$，逐种子原始记录
+    \For{$r = r_1$ \textbf{to} $r_R$}
+      \State 设置全局随机状态 $\textsc{SetSeed}(r)$
+      \State 执行攻击 $X_{\text{adv}}^{(r)}, S^{(r)}, Q^{(r)} \gets \textsc{DiffSearch}(\mathcal{C}, r)$
+      \ForAll{防御 $D_\psi \in \mathcal{C}.\text{defenses}$}
+        \State 计算防御后样本 $X_{\text{def}}^{(r)} \gets D_\psi(X_{\text{adv}}^{(r)})$
+      \EndFor
+      \ForAll{指标 $m_j$}
+        \State 记录 $v_j^{(r)} \gets m_j(X, X_{\text{adv}}^{(r)}, X_{\text{def}}^{(r)}, Y)$
+      \EndFor
+      \State 保存逐种子产物：$\{X_{\text{adv}}^{(r)}, X_{\text{def}}^{(r)}, \mathbf{v}^{(r)}\}$
+    \EndFor
+    \ForAll{指标 $m_j$}
+      \State $\bar{m}_j \gets \frac{1}{R}\sum_{r} v_j^{(r)}$，$\sigma_j \gets \sqrt{\frac{1}{R-1}\sum_{r}(v_j^{(r)}-\bar{m}_j)^2}$
+    \EndFor
+    \State \Return $\{(\bar{m}_j, \sigma_j)\}_{j=1}^J$
+  \end{algorithmic}
+\end{algorithm}
+
+\section{方法扩展性}
+
+本文当前实现的候选生成算子是 Stable Diffusion v1.5 img2img。为了让论文能够承接后续补实验，本节把候选生成抽象为可替换模块：
+
+\begin{equation}
+  \mathcal{C}_i =
+  \mathcal{G}(x_i;\Omega,\xi),
+  \label{eq:generic_generator}
+\end{equation}
+
+其中 $\Omega$ 表示算法特有控制参数。对于本文方法，$\Omega=(p,s,g,N)$；对于 AdvDiff 式方法，$\Omega$ 可包含目标分类器梯度和采样步条件；对于 SCA 式方法，$\Omega$ 可包含反演噪声图、语义引导和加速采样器；对于 AnyAttack 式多模态攻击，$\Omega$ 可包含目标图像、视觉语言模型损失和预训练攻击生成器。这样处理后，本文实验系统不再只是固定平台，而是一个围绕候选集合和评价协议组织的算法研究框架。
+
+这种抽象也解释了为什么本文不重新实验仍能完成论文主线调整。已有实验已经覆盖本文当前实现的生成算子、候选预算、编辑强度、输入净化防御、跨模型和目标攻击补充分析；新加入的前沿算法介绍则作为第~\ref{chap:conclusion}~章未来工作的具体路线，而不混入当前实验结论。换言之，本文已经完成的是 \methodname 的实证评估，后续可补的是更强候选生成算子的替换实验。
+
+\chapter{算法实现与实验支撑系统}
+\label{chap:impl}
+
+\section{技术选型}
+
+为实现第~\ref{chap:design}~章提出的扩散式候选搜索与评估方法，本文构建了配套的实验支撑系统。技术选型遵循“成熟稳定、生态丰富、易于扩展”的原则，详细方案如表~\ref{tab:techstack}所示。
+
+\begin{table}[htbp]
+  \centering
+  \caption{算法实现与实验支撑系统的技术选型}
+  \label{tab:techstack}
+  \tablefont
+  \begin{tabular}{lll}
+    \toprule
+    组件 & 技术选型 & 选型理由 \\
+    \midrule
+    编程语言 & Python 3.11 & 深度学习生态核心语言 \\
+    CLI框架 & Typer & 类型提示驱动，自动生成帮助文档 \\
+    配置管理 & OmegaConf & 轻量级，支持YAML合并与序列化 \\
+    构建工具 & Hatchling & 简洁的Python项目打包方案 \\
+    深度学习框架 & PyTorch 2.x & 动态计算图，调试便捷 \\
+    传统攻击 & 自实现PyTorch模块 & 接口统一，便于指标和元数据记录 \\
+    扩散模型 & HuggingFace diffusers & AutoPipeline支持img2img管线 \\
+    图像变换 & PIL+torchvision & 覆盖压缩、模糊、量化和张量转换 \\
+    感知指标 & lpips (AlexNet) & 标准LPIPS实现 \\
+    分布指标 & torchmetrics (FID) & Inception特征统计标准实现 \\
+    语义指标 & transformers (CLIP) & CLIP模型语义匹配 \\
+    可视化 & matplotlib & 通用绘图库，支持论文级输出 \\
+    报告模板 & Jinja2 & 灵活的模板渲染引擎 \\
+    测试框架 & pytest & Python标准测试框架 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+在深度学习框架方面，系统选择PyTorch 2.x作为核心框架，主要考虑其动态计算图特性便于调试和开发，且拥有丰富的对抗攻击和防御算法生态。PyTorch的自动微分机制是实现梯度攻击的基础，其灵活的张量操作接口也为各种图像变换提供了便利。在扩散模型方面，采用HuggingFace diffusers库作为Stable Diffusion的接口层，该库提供了标准化的img2img管线和模型管理功能，支持半精度推理和注意力优化等加速特性。在配置管理方面，选择OmegaConf作为YAML解析和管理工具，其支持配置合并、类型检查和环境变量插值等高级特性，使得实验配置的管理既灵活又安全。
+
+\section{模型库实现}
+
+模型库模块的核心实现包括分类器加载和扩散模型加载两部分。
+
+分类器加载通过注册表模式管理多种模型架构。注册表维护了一个从字符串名称到工厂函数的映射字典，工厂函数负责实例化对应的模型并加载预训练权重。为了提高可复现性，系统没有直接依赖torchvision构造函数的隐式下载逻辑，而是通过可配置的权重镜像地址加载ResNet-50\cite{he2016deep}、ViT-B/16\cite{dosovitskiy2021an}和DenseNet-121\cite{huang2017densely}的官方权重，并对DenseNet旧版权重键名进行兼容性映射。\texttt{ImageNetNormalizeWrapper}作为分类器的统一封装层，在前向传播中自动对 $[0,1]$ 范围的输入进行ImageNet标准化处理；对于ViT-B/16，该封装层还负责将输入重采样到模型要求的224$\times$224尺寸，使下游攻击和防御模块无需关心不同分类器的预处理差异。
+
+扩散模型加载模块使用diffusers的\texttt{AutoPipelineForImage2Image}从HuggingFace Hub或本地缓存加载预训练模型。CUDA环境下默认以半精度加载，CPU环境下会自动切换为float32以避免半精度数值问题。系统默认关闭diffusers安全检查器，因为实验对象来自受控研究数据集和测试管线，同时开启attention slicing以降低显存峰值。进程级缓存通过\texttt{(model\_id, device, dtype)}三元组索引，保证同一worker内的扩散攻击和扩散净化可以复用已加载管线；批量并行时，不同worker进程各自持有独立缓存，因此CLI在并行运行前提供预热步骤来提前下载分类器、Stable Diffusion、LPIPS、FID和CLIP相关权重。
+
+\section{对抗样本生成模块}
+
+\subsection{单步梯度扰动生成}
+
+单步梯度扰动生成采用FGSM基线。实现流程为：（1）将输入张量设置为需要梯度计算（\texttt{requires\_grad=True}）；（2）前向传播计算分类损失；（3）反向传播获取输入梯度；（4）取梯度符号乘以扰动幅度 $\epsilon$，添加到原始输入上；（5）将结果裁剪至 $[0,1]$ 的合法像素值范围。该方法每个样本只需一次前向传播和一次反向传播，计算效率高，适合作为传统扰动基线。
+
+\subsection{迭代投影梯度优化}
+
+迭代投影梯度优化采用PGD基线。实现要点包括：（1）支持随机初始化（在 $[-\epsilon, \epsilon]$ 范围内均匀采样初始扰动）以增强样本多样性；（2）每步迭代中计算梯度符号、沿梯度方向移动步长 $\alpha$；（3）将累积扰动投影回 $L_\infty$ 范数 $\epsilon$-球内；（4）将最终的对抗样本裁剪至 $[0,1]$ 范围。默认配置为20步迭代、$\epsilon=0.03$、$\alpha=0.007$。
+
+\subsection{生成器基线方法}
+
+当前AdvGAN实现定位为生成器攻击接口的工程基线，而不是离线充分训练的完整AdvGAN复现。实现中首先构造一个四层卷积生成器，输出经\texttt{tanh}约束的扰动；随后在每个输入批次上即时训练该生成器。非目标设置下，代理目标为最大化真实标签交叉熵，使生成器推动样本离开原始判别边界；若配置了\texttt{target\_class}，则改为最小化目标类别交叉熵。训练结束后，系统将生成扰动裁剪到 $[-\epsilon,\epsilon]$ 区间，再与原图相加并裁剪到 $[0,1]$ 合法像素范围。该实现的查询次数按训练轮数\texttt{epochs}记录，元数据保存扰动半径、训练轮数、学习率、目标类别、代理目标和耗时。由于生成器并未跨批次或跨数据集累积训练，本文在实验章节将其解释为轻量生成器基线，而不是代表完整离线AdvGAN的最优性能。
+
+\subsection{扩散式候选搜索生成}
+
+扩散式生成模块基于 Stable Diffusion img2img 管线实现。系统将输入张量按\texttt{sd\_batch\_size}切分为若干子批次，转换为PIL图像后交给diffusers管线，在固定提示词\texttt{a high quality photo}、变换强度\texttt{strength}和引导系数\texttt{guidance\_scale}的控制下生成候选样本，再使用目标分类器判断候选是否攻击成功。与传统梯度扰动不同，扩散候选样本不受 $L_p$ 范数球约束，其核心参数控制的是图像编辑强度、批量生成粒度和候选搜索预算。需要说明的是，本文实现受 AdvDiffuser 等扩散式无限制样本生成工作的启发，但并未复现其梯度注入、CAM 引导或 adversarial inpainting 机制，而是将 Stable Diffusion img2img 候选搜索实现为 \methodname 的候选生成算子。为支持无GPU或无模型权重的单元测试，生成模块还提供\texttt{mock}后端，用颜色扰动、噪声和模糊模拟生成式变换；论文主要评估均使用\texttt{sd}后端。
+
+候选样本筛选策略如下。对于每个输入样本，方法最多生成 $N$ 轮候选，默认 \texttt{num\_candidates=5}。这一默认值来自候选数 \{1,3,5,10\} 的敏感性分析：当前数据中较小候选数已经可以达到接近饱和的 ASR，但 $N=5$ 能在保持 100\% 攻击成功率的同时提供更高的 LPIPS 候选多样性，而查询开销仍明显低于 $N=10$。因此本文将其作为默认评估配置，而不是声称其在所有模型和数据集上都是最优值。
+
+候选选择采用“先成功、再择优”的规则。算法逐轮生成候选并调用分类器预测；在非目标攻击中，若候选预测类别不同于原始预测类别，则认为该候选成功；在目标攻击中，若候选预测为指定目标类别，则认为成功。对于同一样本的多个成功候选，算法选择与原图 LPIPS 距离最大的样本作为最终对抗样本，以保留更充分的生成式变化。为了降低无效计算，若一个批次中所有样本都已经获得至少一个成功候选，则立即早停，不再生成剩余轮次。
+
+代码还实现了失败回退机制。若样本在主循环的 $N$ 轮候选中均失败，算法会只对失败子批次追加回退生成，将 \texttt{strength} 提高 \texttt{fallback\_\allowbreak strength\_\allowbreak delta=0.20}，并最多额外尝试 3 个候选。回退阶段同样遵循早停和 LPIPS 择优规则，并在攻击结果元数据中记录 \texttt{fallback\_\allowbreak used}、候选数、批大小和累计耗时。该机制使论文中的 \methodname 实现细节与报告中的查询次数统计保持一致。
+
+\section{输入变换与净化模块}
+
+本节将第~\ref{chap:design}~章中定义的防御函数 $D_\psi$ 形式化为具体的输入变换算子，并给出实现细节。
+
+\subsection{轻量级输入变换方法}
+
+三种轻量防御可以统一表示为确定性像素级变换 $D_\psi: [0,1]^{C\times H\times W} \to [0,1]^{C\times H\times W}$：
+
+\textbf{JPEG 压缩。} 设质量因子为 $q \in \{1,\ldots,100\}$，JPEG 防御定义为编码-解码循环：
+\begin{equation}
+  D_{\text{JPEG}}(x; q) = \textsc{Decode}_{\text{JPEG}}\!\left(\textsc{Encode}_{\text{JPEG}}(x, q)\right),
+  \label{eq:defense_jpeg}
+\end{equation}
+其中编码过程包含 $8{\times}8$ 分块的离散余弦变换（DCT）和依赖 $q$ 的量化矩阵除法取整。$q$ 越小，量化越粗，高频信息（含对抗扰动）丢失越多，但图像保真度也越低。
+
+\textbf{高斯模糊。} 设核大小为 $k$，标准差为 $\sigma_b$，高斯模糊防御定义为二维卷积：
+\begin{equation}
+  D_{\text{Blur}}(x; k, \sigma_b) = x * \mathcal{K}(k, \sigma_b), \quad \mathcal{K}(i,j) = \frac{1}{2\pi\sigma_b^2}\exp\!\left(-\frac{i^2+j^2}{2\sigma_b^2}\right).
+  \label{eq:defense_blur}
+\end{equation}
+
+\textbf{位深度缩减。} 设目标位深为 $b$，量化防御定义为均匀量化：
+\begin{equation}
+  D_{\text{Bit}}(x; b) = \frac{\lfloor x \cdot (2^b - 1) + 0.5 \rfloor}{2^b - 1}.
+  \label{eq:defense_bit}
+\end{equation}
+
+上述三类变换的共同特征是计算成本极低（延迟 $<2$s），但本质上只能破坏像素级高频分量，对语义级编辑变换的恢复能力有限。
+
+\subsection{扩散式输入净化方法}
+
+扩散净化防御受 DiffPure\cite{nie2022diffpure} 的思想启发，但当前实现并不是原论文 DDPM 净化过程的完整复现，而是一个 Stable Diffusion img2img 近似净化算子。设噪声水平参数为 $\sigma$，去噪步数为 $T_d$，实现中的净化过程可表示为：
+\begin{equation}
+  \begin{aligned}
+    \tilde{x} &= \operatorname{clip}(x+\sigma\epsilon,0,1),\\
+    D_{\text{Purify}}(x; \sigma, T_d)
+      &= \textsc{SDImg2Img}_\theta(\tilde{x},p_{\text{null}},s_d,g_d,T_d),\\
+    \epsilon &\sim \mathcal{N}(0,\mathbf{I}),
+  \end{aligned}
+  \label{eq:defense_purify}
+\end{equation}
+其中 $p_{\text{null}}$ 为通用提示词，$g_d$ 为净化引导系数，$s_d$ 为 img2img 去噪强度。对比式~\eqref{eq:diffusion_candidate}可以看出，攻击和净化共享同一类扩散编辑管线，区别在于：攻击使用编辑强度 $s$ 控制加噪深度以产生语义偏移，净化先用像素级高斯噪声覆盖输入中的细粒度信号，再依赖 img2img 去噪恢复图像内容。由于该近似净化同样会执行生成式编辑，它可能同时改变干净语义和对抗语义；这也是实验中扩散净化面对扩散攻击效果有限且干净准确率下降较大的一个实现层面原因。
+
+实现中将 \texttt{steps} 传递给 diffusers 的推理步数，img2img 强度由 $s_d=\max(0.3, \min(0.9, 1/T_d))$ 给出。因此，当 \texttt{steps} 为10、20或50时，$s_d$ 均被下界裁剪为0.3；相应消融主要改变去噪推理步数，而不是改变 img2img 编辑强度。防御模块同样支持 \texttt{sd\_batch\_size} 子批处理以控制显存峰值。
+
+\section{攻防评估流水线}
+
+第~\ref{chap:design}~章定义的评估协议在系统中实现为端到端的攻防评估流水线。算法~\ref{alg:eval_pipeline}给出其伪代码，覆盖从配置加载到产物归档的完整流程。
+
+\begin{algorithm}[H]
+  \caption{单配置攻防评估流水线}
+  \label{alg:eval_pipeline}
+  \begin{algorithmic}[1]
+    \Require YAML 配置 $\mathcal{C}$
+    \Ensure 指标文件、样本产物、配置快照
+    \State 解析 $\mathcal{C}$：提取模型 $f_\theta$、攻击方法 $A$、防御集合 $\{D_1,\ldots,D_L\}$、种子集合 $\{r_1,\ldots,r_R\}$
+    \State 加载数据集 $(X, Y) \gets \textsc{LoadData}(\mathcal{C}.\text{dataset})$
+    \State 加载分类器 $f_\theta \gets \textsc{LoadModel}(\mathcal{C}.\text{model})$
+    \State 启动资源追踪器 $\textsc{ResourceTracker.Start}()$
+    \For{$r = r_1$ \textbf{to} $r_R$}
+      \State $\textsc{SetSeed}(r)$
+      \State $X_{\text{adv}}^{(r)}, S^{(r)}, Q^{(r)} \gets A(X, Y, f_\theta)$ \Comment{执行攻击（Algorithm~\ref{alg:diffsearch}或基线）}
+      \State 计算攻击指标：$\text{ASR}^{(r)}, \text{ASR-C}^{(r)}$
+      \State 计算质量指标：$\text{LPIPS}^{(r)}, \text{CLIP}^{(r)}, \text{FID}^{(r)}$
+      \ForAll{防御 $D_l$}
+        \State $X_{\text{def}}^{(r,l)} \gets D_l(X_{\text{adv}}^{(r)})$，$X_{\text{clean\_def}}^{(r,l)} \gets D_l(X)$
+        \State 计算 $\text{RA}^{(r,l)}, \Delta_{\text{clean}}^{(r,l)}, T_{D_l}^{(r)}$
+        \State 计算 $\text{NRG}^{(r,l)} \gets \text{RA}^{(r,l)} - \Delta_{\text{clean}}^{(r,l)}$
+      \EndFor
+    \EndFor
+    \State 按算法~\ref{alg:multiseed}聚合所有指标
+    \State 停止资源追踪，记录 $\mathbf{c} = (\bar{q}, T, M_{\text{gpu}}, M_{\text{cpu}})$
+    \State 保存产物：配置快照、JSON/CSV指标、样本图像
+    \State \Return 聚合指标与产物路径
+  \end{algorithmic}
+\end{algorithm}
+
+\section{指标计算模块}
+
+评估模块分为攻击指标、防御指标、质量指标和资源指标四类。攻击阶段首先重新计算干净样本预测和对抗样本预测，由此得到干净准确率、对抗准确率、预测变化率、总体ASR和仅干净正确样本上的ASR。对于设置了\texttt{target\_class}的攻击，平台额外记录目标类别命中率；对于非目标攻击，则主要使用预测变化和真实标签错误来刻画攻击效果。防御阶段同时评估防御后的对抗样本和防御后的干净样本，因此能够区分鲁棒准确率提升和干净准确率损失。
+
+LPIPS指标使用lpips库提供的预训练AlexNet模型作为特征提取器。该指标在AlexNet的多个卷积层上提取干净样本和对抗样本的特征表示，计算归一化的特征距离并加权求和，得到的数值越大表示两个样本之间的感知差异越大。实现中通过\texttt{AIGC\_LPIPS\_BATCH\_SIZE}环境变量控制分块大小，避免高分辨率样本一次性进入LPIPS模型造成显存峰值过高。
+
+FID指标使用torchmetrics提供的\texttt{FrechetInceptionDistance}实现，但为了降低高分辨率多实验评估的显存和时间开销，当前代码设置\texttt{feature=64}，因此本文报告的 FID 是实验内部使用的近似分布距离指标，而不是可与外部论文标准 \texttt{feature=2048} FID 直接横向比较的数值。该指标计算干净图像集合和对抗图像集合在特征空间中的多元高斯分布参数（均值和协方差），然后计算两个分布之间的Fréchet距离；在同一实现和同一数据设置下，FID值越小表示两个分布越接近。
+
+CLIP Score使用transformers库加载\texttt{clip-vit-base-patch16}，分别提取图像和文本提示词的嵌入向量，计算逐样本图文嵌入余弦相似度后取平均。当前实现使用攻击配置中的通用提示词（如 \texttt{a photo} 或 \texttt{a high quality photo}）进行计算，因此该指标只反映对抗样本与通用图文提示的一致程度，不能单独证明对抗样本保持了原始类别语义。资源指标由\texttt{ResourceTracker}在实验运行期间每0.5秒采样一次，记录CPU RSS峰值、CUDA峰值分配显存、CUDA峰值保留显存，以及在pynvml可用时记录GPU平均利用率和峰值利用率。
+
+\section{配置化运行机制}
+
+实验支撑系统通过Typer框架实现命令行接口，提供以下核心命令：
+
+\begin{table}[htbp]
+  \centering
+  \tablefont
+  \setlength{\tabcolsep}{5pt}
+  \begin{tabularx}{0.95\textwidth}{lX}
+    \toprule
+    命令 & 功能说明 \\
+    \midrule
+    \texttt{run} & 执行单个实验配置，接受 YAML 配置文件路径作为参数。 \\
+    \texttt{run-batch} & 批量执行多个实验配置，接受配置文件目录路径，支持顺序模式和显存感知并行模式。 \\
+    \texttt{ui} & 启动基于 Gradio 的 Web UI 界面。 \\
+    \texttt{prewarm} & 扫描配置目录并预下载分类器、扩散管线和质量指标模型权重。 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+批量运行命令是当前工程版本中变化较大的部分。顺序模式在当前进程中逐个执行配置，适合复用同一进程内的Stable Diffusion缓存；并行模式使用\texttt{spawn}上下文创建worker进程，先根据配置是否使用真实SD后端将任务划分为SD-heavy和Light两阶段，再按GPU编号创建独立进程池。多GPU模式下，每个GPU拥有独立进程池，worker在导入PyTorch之前通过\texttt{CUDA\_VISIBLE\_DEVICES}绑定到指定GPU，避免进程复用导致GPU亲和性失效。若某个配置因CUDA OOM失败，平台会在阶段结束后用独占worker进行串行重试。CLI还实现了SIGINT/SIGTERM处理，第一次中断会关闭所有进程池并清理残留worker，第二次中断则强制退出。
+
+实验的可复现性通过以下机制保障：（1）每个随机种子进入攻击--防御流程前统一设置Python内置随机数生成器、NumPy随机数生成器和PyTorch随机数生成器；（2）将完整的实验配置保存为\texttt{config.yaml}快照，记录所有影响实验结果的参数和设置；（3）保存\texttt{per\_seed\_metrics.json}、\texttt{metrics.json}、\texttt{metrics.csv}、\texttt{structured\_metrics.json}和\texttt{metrics\_wide.csv}，同时保留逐种子原始指标和跨种子聚合指标；（4）干净样本、第一随机种子的对抗样本和防御后样本分别保存为图像文件，支持后续的定性分析和可视化检查；（5）资源追踪器将运行时CPU/GPU开销写入同一指标文件，使论文中的效率分析可以回溯到具体实验目录。
+
+此外，系统通过Python标准库的logging模块在运行时记录关键事件和异常信息；当前版本主要将这些信息输出到控制台或调用环境，而不是默认写入每个实验目录的独立日志文件。因此，论文中关于实验审计的依据主要是配置快照、指标文件、样本产物和批量运行摘要，而非单独的日志归档。
+
+% ============================================================
+%  Chapter 5: Experiments
+% ============================================================
+\chapter{实验与分析}
+\label{chap:experiment}
+
+本章基于已有报告数据，对 \methodname 的生成特征、防御响应和参数影响进行分析。为提高结果稳定性，本章统一采用多随机种子重复实验，并在表格中报告均值和标准差。除特别说明外，传统扰动和轻量输入变换的参数分析使用 500 张 ImageNet 子集图像，扩散候选搜索、扩散净化和跨模型分析使用 200 张 ImageNet 子集图像，随机种子均为 42、123、456。工程系统在本章中只承担配置复现和指标归档角色，实验解释围绕候选搜索方法本身展开。
+
+\section{实验设置}
+
+\subsection{代码与配置组织}
+
+实验配置已按分析目的重构为三组：论文主线目录 \texttt{configs/\allowbreak paper/}，机制与参数分析目录 \texttt{configs/\allowbreak ablations/}，以及冒烟测试目录 \texttt{configs/\allowbreak smoke/}。论文主线围绕传统扰动基线、\methodname 候选搜索、ResNet-50 攻防矩阵、跨模型评估和目标设定边界展开；机制与参数分析进一步拆分为扰动预算、候选预算、扩散编辑强度、输入变换参数和模型结构差异等维度。每个配置文件都显式记录样本量、随机种子、模型、方法、防御、指标和报告输出目录，运行结束后会在报告目录保存解析后的 \texttt{config.yaml}，保证论文结果可以回溯到具体配置。
+
+\begin{table}[htbp]
+  \centering
+  \caption{论文实验配置概览}
+  \label{tab:exp_config_overview}
+  \tablefont
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabularx}{\textwidth}{lcX}
+    \toprule
+    实验类型 & 样本量 & 主要用途 \\
+    \midrule
+    传统扰动基线 & 500 & FGSM、PGD 在 ResNet-50 上的扰动强度与轻量变换响应 \\
+    候选搜索主线 & 200 & Stable Diffusion img2img 候选搜索与 JPEG/扩散净化响应 \\
+    ResNet-50 交互矩阵 & 200 & 三类生成方式与四种输入处理方法的交叉评估 \\
+    机制与参数分析 & 200 或 500 & 编辑强度、候选数、输入变换参数、净化步数和噪声水平分析 \\
+    跨模型结构分析 & 200 & ResNet-50、ViT-B/16、DenseNet-121的结构差异比较 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\subsection{评价指标定义}
+
+本文同时报告“ASR”和“ASR（仅正确样本）”，二者分母不同。ASR 使用全部评估样本作为分母，反映攻击结果中有多少样本满足攻击成功判定；ASR（仅正确样本）只在干净输入原本被目标模型正确分类的样本上计算，反映攻击对原本有效分类能力的破坏程度。因此，当干净准确率低于 100\% 时，两个指标可能存在差异。防御效果以鲁棒准确率（Robust Accuracy, RA）为主，即模型在防御处理后的对抗样本上仍预测正确的比例；干净准确率下降用于衡量防御对正常输入的副作用。
+
+资源开销由 \texttt{ResourceTracker} 记录。系统在实验运行期间采样 CPU RSS 峰值、CUDA 峰值显存分配、CUDA 保留显存，以及可用时的 GPU 利用率。由于扩散类实验需要加载 Stable Diffusion 管线，本文在防御代价分析中同时报告延迟、GPU 显存和 CPU 内存，而不再只讨论时间成本。
+
+\subsection{同类算法比较口径}
+
+\begin{table}[htbp]
+  \centering
+  \caption{本文实验中的同类方法比较层次}
+  \label{tab:method_compare_protocol}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabularx}{\textwidth}{lXX}
+    \toprule
+    比较层次 & 纳入对象 & 在本文中的作用 \\
+    \midrule
+    直接定量比较 & FGSM、PGD、修正后的生成器基线、\methodname & 使用同一ImageNet子集、目标模型、指标和报告格式，比较攻击成功率、质量指标和查询成本 \\
+    防御响应比较 & JPEG、高斯模糊、位深度缩减、扩散净化 & 检验不同攻击在输入变换和生成式净化下的鲁棒准确率与干净准确率副作用 \\
+    机制性定性比较 & AI-GAN、AdvDiff、AdvDiffuser、SCA、AnyAttack & 对比训练需求、梯度引导、扩散反演、语义约束和多模态目标等机制差异，说明本文候选搜索的边界 \\
+    复现证据比较 & 多随机种子、配置快照、JSON/CSV、样本归档、资源记录 & 保证直接实验结果可回溯，也为后续接入更强同类算法保留统一评价口径 \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+表~\ref{tab:method_compare_protocol}把“同类算法比较”分成两类：能够在当前代码中直接运行的攻击用于定量比较，尚未完整复现的前沿生成式攻击用于机制性比较。这样处理可以避免把RobustBench、CleverHans或ART的工具覆盖范围误写成本文贡献，也能更清楚地回答本文方法相对于同类生成式攻击的差异：\methodname 不依赖离线训练或扩散过程梯度注入，但提供了候选预算、早停回退、成功候选选择和多维指标记录。需要说明的是，当前实现已将生成器基线的代理损失修正为非目标交叉熵上升；因此表~\ref{tab:generator_target_plan}中的生成器基线数值需在重跑后替换，本文当前结论不再使用旧实现的AdvGAN数值支撑。
+
+\section{传统扰动方法基线分析}
+
+传统攻击基线使用 500 张 224$\times$224 ImageNet 子集图像，在 ResNet-50 上评估 FGSM 和 PGD。表~\ref{tab:trad_attack_new}给出了三次运行的均值和标准差。FGSM 的总体 ASR 为 40.60\%，由于该攻击是确定性的单步梯度法，三个种子结果一致；PGD 的总体 ASR 为 92.40\%\,$\pm$\,0.72\%，仅在干净正确样本上的 ASR 达到 99.68\%\,$\pm$\,0.14\%。这表明 PGD 在当前设置下对干净正确样本具有较高攻击成功率；总体 ASR 略低于该值，是因为分母包含了干净输入中原本分类错误的样本。
+
+\begin{table}[htbp]
+  \centering
+  \caption{传统攻击基线结果（ResNet-50，500张图像，3个随机种子）}
+  \label{tab:trad_attack_new}
+  \tablefont
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{lccccc}
+    \toprule
+    攻击方法 & ASR（\%） & ASR（仅正确，\%） & 干净准确率（\%） & 对抗准确率（\%） & 查询次数 \\
+    \midrule
+    FGSM & 40.60 $\pm$ 0.00 & 42.89 $\pm$ 0.00 & 83.00 $\pm$ 0.00 & 47.40 $\pm$ 0.00 & 1 \\
+    PGD & 92.40 $\pm$ 0.72 & 99.68 $\pm$ 0.14 & 83.00 $\pm$ 0.00 & 0.27 $\pm$ 0.12 & 20 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+表~\ref{tab:trad_defense_new}展示三种轻量防御在传统攻击上的表现。高斯模糊在 FGSM 和 PGD 下的 RA 分别为 56.00\% 和 46.87\%，干净准确率下降为 3.60\%；JPEG 对 PGD 的恢复能力接近高斯模糊，但处理延迟更高；位深度缩减对 FGSM 保留一定效果，但对 PGD 的恢复效果较弱。这说明不同预处理方法对攻击类型较敏感，单一轻量防御难以稳定覆盖不同传统攻击。
+
+\begin{table}[htbp]
+  \centering
+  \caption{传统攻击下的防御效果（RA/干净下降/延迟，粗体标出同组最优值）}
+  \label{tab:trad_defense_new}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{@{}llccc@{}}
+    \toprule
+    攻击 & 防御 & RA（\%） & 干净下降（\%） & 延迟（s） \\
+    \midrule
+    \multirow{3}{*}{FGSM}
+      & JPEG(75) & 55.00 $\pm$ 0.00 & 6.60 $\pm$ 0.00 & 1.149 $\pm$ 0.044 \\
+      & 高斯模糊 & \best{56.00 $\pm$ 0.00} & 3.60 $\pm$ 0.00 & 0.009 $\pm$ 0.010 \\
+      & 位深度(4 bit) & 49.20 $\pm$ 0.00 & \best{1.00 $\pm$ 0.00} & \best{0.002 $\pm$ 0.001} \\
+    \addlinespace[2pt]
+    \multirow{3}{*}{PGD}
+      & JPEG(75) & 45.13 $\pm$ 0.31 & 6.60 $\pm$ 0.00 & 1.124 $\pm$ 0.013 \\
+      & 高斯模糊 & \best{46.87 $\pm$ 0.58} & 3.60 $\pm$ 0.00 & 0.003 $\pm$ 0.000 \\
+      & 位深度(4 bit) & 0.60 $\pm$ 0.20 & \best{1.00 $\pm$ 0.00} & \best{0.001 $\pm$ 0.000} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{\methodname 候选搜索效果分析}
+
+\methodname 主线使用 200 张 512$\times$512 图像，Stable Diffusion v1.5 作为 img2img 后端，默认参数为 \texttt{strength=0.7}、\texttt{guidance\_\allowbreak scale=7.5}、\texttt{num\_\allowbreak candidates=5}。表~\ref{tab:diff_attack_new}表明，该候选搜索流程三次运行均达到 100\% ASR，平均查询次数为 5。LPIPS 为 0.6242\,$\pm$\,0.0013，FID 为 3.1275\,$\pm$\,0.6512，反映出生成样本相对原图存在可见的编辑变化，而不是传统的微小像素扰动。
+
+\begin{table}[htbp]
+  \centering
+  \caption{扩散式生成攻击主线结果（ResNet-50，200张图像，3个随机种子）}
+  \label{tab:diff_attack_new}
+  \tablefont
+  \setlength{\tabcolsep}{3pt}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{lccc}
+    \toprule
+    攻击方法 & ASR（\%） & ASR（仅正确，\%） & 查询均值 \\
+    \midrule
+    扩散攻击 & 100.00 $\pm$ 0.00 & 100.00 $\pm$ 0.00 & 5.00 \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{0.6em}
+
+  \begin{tabular}{lccc}
+    \toprule
+    攻击方法 & LPIPS & CLIP Score & FID \\
+    \midrule
+    扩散攻击 & 0.6242 $\pm$ 0.0013 & 0.2046 $\pm$ 0.0011 & 3.1275 $\pm$ 0.6512 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+表~\ref{tab:diff_defense_new} 显示，JPEG 与扩散净化面对扩散攻击时效果有限。JPEG 的 RA 为 0.67\%\,$\pm$\,0.58\%，扩散净化同样只有 0.67\%\,$\pm$\,0.29\%。扩散净化还造成 57.50\%\,$\pm$\,2.00\% 的干净准确率下降，并引入 121.58 秒左右的处理延迟。该节所有表格和正文均以 \texttt{reports/} 下的多种子结果为准。
+
+\begin{table}[htbp]
+  \centering
+  \caption{扩散攻击下的防御效果（ResNet-50，200张图像）}
+  \label{tab:diff_defense_new}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lccc}
+    \toprule
+    防御方法 & RA（\%） & 干净下降（\%） & 延迟（s） \\
+    \midrule
+    JPEG(75) & 0.67 $\pm$ 0.58 & 1.00 $\pm$ 0.00 & 1.619 $\pm$ 0.154 \\
+    扩散净化(50步) & 0.67 $\pm$ 0.29 & 57.50 $\pm$ 2.00 & 121.577 $\pm$ 0.219 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{与同类攻击方法的比较}
+
+表~\ref{tab:direct_method_compare}将本文方法放回同类攻击方法序列中比较。FGSM和PGD代表传统 $L_p$ 扰动基线，生成器基线代表无需调用扩散模型的学习式扰动生成接口，\methodname 则代表基于Stable Diffusion img2img的无限制候选搜索。该比较的重点不是单独追求最高ASR，而是同时观察攻击约束、是否需要训练或采样、查询预算以及感知变化。PGD在当前设置下已经接近饱和，但其LPIPS明显低于扩散候选搜索；扩散攻击同样达到100\% ASR，同时表现出更大的视觉编辑幅度，因此后续防御分析需要把它与传统扰动分开讨论。
+
+\begin{table}[htbp]
+  \centering
+  \caption{直接可运行攻击方法的比较（ResNet-50，200张图像；生成器基线待重跑）}
+  \label{tab:direct_method_compare}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.12}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lccccc}
+    \toprule
+    方法 & 主要机制 & 约束/搜索空间 & ASR（\%） & LPIPS & 查询或训练成本 \\
+    \midrule
+    FGSM & 单步梯度扰动 & $L_\infty$ 范数球 & 50.50 $\pm$ 0.00 & 0.2429 & 1次梯度 \\
+    PGD & 多步投影梯度 & $L_\infty$ 范数球 & 99.17 $\pm$ 0.29 & 0.1183 & 20步梯度 \\
+    生成器基线 & 小型CNN即时训练 & $L_\infty$ 扰动生成 & 待重跑 & 待重跑 & 50轮批内训练 \\
+    \methodname & SD img2img候选搜索 & 无固定范数球 & 100.00 $\pm$ 0.00 & 0.5746 & 5个候选预算 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+从机制上看，\methodname 与AI-GAN、AdvDiff、AdvDiffuser、SCA和AnyAttack等生成式攻击属于同一研究方向，但当前实现选择了更可复现的候选搜索路线。AI-GAN类方法需要离线训练生成器，优势是推理速度快，但模型迁移和训练数据覆盖会影响攻击效果；AdvDiff和AdvDiffuser通过扩散采样过程中的对抗引导增强目标性，攻击能力更强，但实现复杂度和计算开销也更高；SCA进一步引入扩散反演和语义一致性引导，用于缓解无限制攻击中的语义漂移；AnyAttack则把攻击对象扩展到视觉语言模型。本文方法没有复现这些更强生成算子的全部机制，因此其贡献应表述为“可复现的扩散候选搜索与多维评估协议”，而不是声称在算法强度上全面超过上述工作。
+
+\section{攻防交互与鲁棒性矩阵分析}
+
+为了在同一图像尺寸和同一指标集合下比较攻击特征，完整 ResNet-50 实验使用 200 张 512$\times$512 图像，同时运行 FGSM、PGD 和 Diffusion，并对四种防御进行交叉评估。图~\ref{fig:attack_comparison}与表~\ref{tab:all_attacks_new}展示攻击侧结果。PGD 与 Diffusion 都能使对抗准确率降至 0\%，但二者的样本质量特征显著不同：PGD 的 LPIPS 仅为 0.1183，而 Diffusion 的 LPIPS 为 0.5746，后者体现出更强的生成式图像编辑幅度。
+
+\begin{figure}[htbp]
+  \centering
+  \pgfattackcomparisonfigure
+  \caption{三种攻击方法的多维指标对比}
+  \label{fig:attack_comparison}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{完整攻防实验中的攻击效果对比（ResNet-50，200张图像）}
+  \label{tab:all_attacks_new}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{lccccc}
+    \toprule
+    攻击方法 & ASR（\%） & ASR（仅正确，\%） & LPIPS & CLIP Score & FID \\
+    \midrule
+    FGSM & 50.50 $\pm$ 0.00 & 52.44 $\pm$ 0.00 & 0.2429 $\pm$ 0.0000 & 0.2268 $\pm$ 0.0000 & 1.6950 $\pm$ 0.0000 \\
+    PGD & 99.17 $\pm$ 0.29 & 100.00 $\pm$ 0.00 & 0.1183 $\pm$ 0.0002 & 0.2262 $\pm$ 0.0000 & 0.3743 $\pm$ 0.0005 \\
+    扩散攻击 & 100.00 $\pm$ 0.00 & 100.00 $\pm$ 0.00 & 0.5746 $\pm$ 0.0019 & 0.2048 $\pm$ 0.0005 & 1.9565 $\pm$ 0.1738 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \pgfradarfigure
+  \caption{三种攻击方法的归一化雷达图}
+  \label{fig:radar}
+\end{figure}
+
+表~\ref{tab:cross_eval_new}和图~\ref{fig:heatmap}给出攻防交叉结果。轻量防御可以部分恢复传统攻击下的准确率，例如高斯模糊使 FGSM 的 RA 达到 51.00\%，JPEG 和高斯模糊使 PGD 的 RA 分别恢复到 36.17\% 和 38.17\%。然而，对扩散攻击而言，四种防御的 RA 均不超过 1.50\%。这说明在当前 Stable Diffusion img2img 候选搜索生成的样本上，压缩、平滑、量化和去噪都难以恢复模型的原始判别结果。
+
+\begin{table}[htbp]
+  \centering
+  \caption{完整攻防交叉评估：鲁棒准确率 RA（\%，粗体标出每类攻击下最高值）}
+  \label{tab:cross_eval_new}
+  \tablefont
+  \begin{tabular}{lccccc}
+    \toprule
+    攻击方法 & 无防御 & JPEG & 高斯模糊 & 位深度 & 扩散净化 \\
+    \midrule
+    FGSM & 39.00 & 47.00 $\pm$ 0.00 & \best{51.00 $\pm$ 0.00} & 43.50 $\pm$ 0.00 & 20.17 $\pm$ 1.26 \\
+    PGD & 0.00 & 36.17 $\pm$ 0.58 & \best{38.17 $\pm$ 0.58} & 0.00 $\pm$ 0.00 & 24.50 $\pm$ 0.50 \\
+    扩散攻击 & 0.00 & 1.00 $\pm$ 0.50 & \best{1.50 $\pm$ 0.50} & 0.33 $\pm$ 0.29 & 1.00 $\pm$ 0.50 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \pgfheatmapfigure
+  \caption{攻防交叉评估热力图：鲁棒准确率（\%）}
+  \label{fig:heatmap}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \pgfdefensebarfigure
+  \caption{不同防御方法在三类攻击下的 RA 对比}
+  \label{fig:defense_bar}
+\end{figure}
+
+\subsection{防御代价分析}
+
+图~\ref{fig:defense_cost}重绘了防御方法的干净准确率下降和延迟。轻量防御中，高斯模糊与位深度缩减的延迟低于 0.04 秒，JPEG 延迟约 1.43 秒；扩散净化的平均延迟约 137.8 秒，比轻量防御高两个数量级。表~\ref{tab:resource_cost_new}进一步给出资源开销。完整 ResNet-50 实验加载扩散攻击与扩散净化后，峰值 GPU 分配显存约 8.3 GB，CPU RSS 峰值约 7.34 GB；扩散攻击主线峰值 GPU 分配显存约 19.2 GB，主要来自 Stable Diffusion 后端和较高分辨率批处理。资源指标表明，扩散净化除时间代价外，也会提高部署所需的计算资源。
+
+\begin{figure}[htbp]
+  \centering
+  \pgfdefensecostfigure
+  \caption{防御代价：干净准确率下降与处理延迟}
+  \label{fig:defense_cost}
+\end{figure}
+
+\begin{table}[H]
+  \centering
+  \caption{代表性实验的资源占用记录}
+  \label{tab:resource_cost_new}
+  \tablefont
+  \setlength{\tabcolsep}{3pt}
+  \resizebox{0.96\textwidth}{!}{%
+  \begin{tabular}{lccc}
+    \toprule
+    实验 & GPU峰值分配显存（MB） & GPU保留显存（MB） & CPU RSS峰值（MB） \\
+    \midrule
+    传统攻击基线 & 45337.3 & 45636.0 & 2125.0 \\
+    扩散攻击主线 & 19192.2 & 21014.0 & 4599.7 \\
+    ResNet-50完整矩阵 & 8302.0 & 8886.0 & 7343.8 \\
+    扩散防御交叉实验 & 18644.5 & 20260.0 & 4344.3 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+\begin{figure}[H]
+  \centering
+  \pgfresourceprofilefigure
+  \caption{代表性实验的 GPU/CPU 资源占用剖面}
+  \label{fig:resource_profile}
+\end{figure}
+
+图~\ref{fig:resource_profile}进一步把表~\ref{tab:resource_cost_new}中的资源记录转化为可比较的剖面。GPU 维度中，传统攻击基线的峰值分配显存达到 45.34 GB，显著高于扩散攻击主线和扩散防御交叉实验；这一现象可能与该实验的样本量、批大小、梯度计算和 CUDA 运行时缓存等因素共同相关，仍需要更细粒度的运行时剖析才能确认主要来源。扩散攻击主线和扩散防御交叉实验的 GPU 保留显存分别约为 21.01 GB 和 20.26 GB，说明 Stable Diffusion 后端即使在样本量较小的设置下也会持续占用较高显存池。
+
+CPU 维度呈现另一种资源形态：ResNet-50完整矩阵的 CPU RSS 峰值最高，达到 7.34 GB，而其 GPU 峰值分配显存是四组实验中最低的 8.30 GB。这表明完整矩阵实验的资源压力并不只来自单次模型推理，也可能与指标聚合、样本缓存、报告归档和多组攻防结果管理有关。因此，平台在资源记录中同时保留 GPU 分配显存、GPU 保留显存和 CPU RSS 是必要的；只报告单一显存峰值会掩盖实验类型之间的资源差异，也不利于后续根据硬件条件选择批大小、候选数量和报告保存策略。
+
+\section{关键机制与参数敏感性分析}
+
+\subsection{扰动预算与迭代步数敏感性}
+
+除默认设置外，报告目录中还包含 FGSM 扰动幅度、PGD 扰动幅度和 PGD 迭代步数的参数分析。表~\ref{tab:traditional_param_ablation}汇总了这些结果。FGSM 对扰动幅度较为敏感，当 $\epsilon$ 从 0.01 提升到 0.15 时，总体 ASR 从 41.60\% 增至 67.80\%，对抗准确率从 46.40\% 降至 29.20\%。相比之下，PGD 在较小扰动幅度下已经接近饱和：$\epsilon=0.01$ 时仅正确样本 ASR 已达到 99.04\%，$\epsilon=0.15$ 时进一步达到 100.00\%。这说明在当前 ResNet-50 与 ImageNet 子集设置下，多步优化比单步扰动幅度更能解释攻击强度差异。
+
+\begin{table}[htbp]
+  \centering
+  \caption{扰动预算参数敏感性分析（500张图像，3个随机种子，粗体标出同类设置中的最高攻击强度）}
+  \label{tab:traditional_param_ablation}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{@{}llcccc@{}}
+    \toprule
+    攻击 & 参数 & ASR（\%） & ASR（仅正确，\%） & 对抗准确率（\%） & 查询均值 \\
+    \midrule
+    \multirow{4}{*}{FGSM}
+      & $\epsilon=0.01$ & 41.60 & 44.10 & 46.40 & 1 \\
+      & $\epsilon=0.03$ & 40.60 & 42.89 & 47.40 & 1 \\
+      & $\epsilon=0.08$ & 48.40 & 48.19 & 43.00 & 1 \\
+      & $\epsilon=0.15$ & \best{67.80} & \best{65.54} & 29.20 & 1 \\
+    \addlinespace[2pt]
+    \multirow{4}{*}{PGD}
+      & $\epsilon=0.01$ & 89.67 $\pm$ 0.12 & 99.04 $\pm$ 0.24 & 0.80 & 20 \\
+      & $\epsilon=0.03$ & 92.40 $\pm$ 0.72 & 99.68 $\pm$ 0.14 & 0.27 & 20 \\
+      & $\epsilon=0.08$ & 95.27 $\pm$ 0.12 & 99.92 $\pm$ 0.14 & 0.07 & 20 \\
+      & $\epsilon=0.15$ & \best{98.27 $\pm$ 0.42} & \best{100.00 $\pm$ 0.00} & \best{0.00} & 20 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+PGD 步数分析进一步说明了扰动强度与计算预算之间的关系。7步 PGD 的总体 ASR 为 89.53\%\,$\pm$\,0.61\%，仅正确样本 ASR 为 96.22\%\,$\pm$\,0.28\%；20步时分别提升至 92.40\%\,$\pm$\,0.72\% 和 99.68\%\,$\pm$\,0.14\%；40步时仅正确样本 ASR 达到 100.00\%，但总体 ASR 为 91.73\%\,$\pm$\,0.64\%，没有带来与查询次数翻倍相匹配的增益。因此本文选择20步作为传统扰动基线配置，它在攻击强度和计算成本之间更均衡。
+
+\subsection{扩散编辑强度敏感性}
+
+表~\ref{tab:strength_ablation_new}和图~\ref{fig:strength}展示 \texttt{strength} 参数的影响。结果显示，即使在 $s=0.3$ 时，扩散攻击总体 ASR 也已达到 91.83\%\,$\pm$\,1.04\%，说明当前图像子集和模型对生成式编辑十分敏感。随着强度提升到 0.7，ASR 达到 100\%，LPIPS 也从 0.3641 上升到 0.6203。攻击强度的主要作用不再只是从低 ASR 提升到高 ASR，而是在高成功率区间内进一步增加候选样本的感知变化幅度。
+
+\begin{table}[htbp]
+  \centering
+  \caption{扩散编辑强度敏感性分析}
+  \label{tab:strength_ablation_new}
+  \tablefont
+  \begin{tabular}{lccccc}
+    \toprule
+    强度 & ASR（\%） & ASR（仅正确，\%） & LPIPS & CLIP Score & FID \\
+    \midrule
+    0.3 & 91.83 $\pm$ 1.04 & 90.65 $\pm$ 1.27 & 0.3641 & 0.1967 & 2.4090 \\
+    0.5 & 99.83 $\pm$ 0.29 & 99.80 $\pm$ 0.35 & 0.4973 & 0.2003 & 4.4405 \\
+    0.7 & 100.00 $\pm$ 0.00 & 100.00 $\pm$ 0.00 & 0.6203 & 0.2043 & 3.0497 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[htbp]
+  \centering
+  \pgfstrengthfigure
+  \caption{扩散编辑强度与 ASR/LPIPS 的关系}
+  \label{fig:strength}
+\end{figure}
+
+\subsection{候选预算与搜索控制机制}
+
+候选预算分析用于解释 \methodname 中的默认 $N=5$。表~\ref{tab:candidate_ablation_new}显示，$N=1$ 已能达到 100\% ASR，但平均 LPIPS 为 0.5791；$N=5$ 同样达到 100\% ASR，LPIPS 提升到 0.6242；$N=10$ 的 LPIPS 最高，但平均查询次数增长到 7.34，且 ASR 未进一步提升。结合早停与失败回退机制，候选上限不等同于固定查询次数，算法会在所有样本成功后提前停止，并只对失败样本追加回退候选。
+
+\begin{table}[htbp]
+  \centering
+  \caption{扩散攻击候选数量消融}
+  \label{tab:candidate_ablation_new}
+  \tablefont
+  \begin{tabular}{lcccc}
+    \toprule
+    候选上限 $N$ & ASR（\%） & 平均查询次数 & LPIPS & 说明 \\
+    \midrule
+    1 & 100.00 $\pm$ 0.00 & 1.11 & 0.5791 & 依赖主候选和少量回退 \\
+    3 & 99.83 $\pm$ 0.29 & 3.02 & 0.6031 & 成本适中 \\
+    5 & 100.00 $\pm$ 0.00 & 5.00 & 0.6242 & 默认配置 \\
+    10 & 99.83 $\pm$ 0.29 & 7.34 & 0.6278 & 多样性提升有限 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{扩散净化参数敏感性}
+
+扩散净化步数消融显示，增加去噪步数并不能有效防御扩散攻击。10步和20步的 RA 均为 0.50\%，50步仅提升到 0.67\%，但延迟从 40.95 秒增长到 121.69 秒。噪声水平消融也呈现类似现象：噪声 0.05、0.10、0.20 对应的 RA 分别为 1.33\%、0.67\%、1.00\%，但干净准确率下降从 34.00\% 扩大到 75.83\%。这说明在当前设置下，扩散净化的参数调节主要改变副作用大小，未能有效恢复扩散攻击后的模型判别结果。
+
+\begin{figure}[htbp]
+  \centering
+  \pgfpurificationfigure
+  \caption{扩散净化步数对 RA、干净下降和延迟的影响}
+  \label{fig:purification}
+\end{figure}
+
+\begin{table}[htbp]
+  \centering
+  \caption{扩散净化噪声水平消融}
+  \label{tab:noise_ablation_new}
+  \tablefont
+  \begin{tabular}{lccc}
+    \toprule
+    噪声水平 & RA（\%） & 干净下降（\%） & 延迟（s） \\
+    \midrule
+    0.05 & 1.33 & 34.00 & 122.28 \\
+    0.10 & 0.67 & 55.67 & 121.55 \\
+    0.20 & 1.00 & 75.83 & 122.45 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{轻量输入变换参数敏感性}
+
+轻量防御的参数扫提供了比单一默认配置更细的解释。JPEG 质量因子越低，压缩越强，对 PGD 的恢复越明显，但对干净输入的副作用也越大。表~\ref{tab:light_defense_ablation}显示，JPEG(25) 可将 PGD 下的 RA 提升到 59.67\%，但干净准确率下降 14.80\%；JPEG(90) 的干净下降只有 3.80\%，PGD 下 RA 却只有 11.60\%。因此 JPEG 防御呈现典型的鲁棒性--保真度权衡。
+
+高斯模糊和位深度缩减也呈现类似但形态不同的权衡。模糊核从 $3\times3$ 增至 $7\times7$ 时，PGD 下 RA 从 0.40\% 提升到 60.13\%，但干净下降也从 0.00\% 增至 9.00\%；继续增至 $9\times9$ 后，RA 反而略降至 58.20\%，干净下降扩大到 16.20\%。位深度缩减在 2 bit 时对 FGSM 和 PGD 均能达到约 55\%--58\% 的 RA，但干净下降为 11.80\%；当位深度提高到 4 bit 及以上时，对 PGD 的恢复效果很低。该结果说明，轻量预处理防御并不存在单调最优参数，实际部署必须同时约束干净准确率损失和攻击类型。
+
+\begin{table}[htbp]
+  \centering
+  \caption{轻量防御参数消融：RA 与干净准确率下降（500张图像）}
+  \label{tab:light_defense_ablation}
+  \tablefont
+  \setlength{\tabcolsep}{3pt}
+  \renewcommand{\arraystretch}{1.12}
+  \begin{tabular}{llccc}
+    \toprule
+    防御 & 参数 & FGSM RA（\%） & PGD RA（\%） & 干净下降（\%） \\
+    \midrule
+    JPEG & quality=25 & 59.20 & 59.67 $\pm$ 1.14 & 14.80 \\
+    JPEG & quality=50 & 56.60 & 57.47 $\pm$ 0.42 & 9.40 \\
+    JPEG & quality=75 & 55.00 & 45.13 $\pm$ 0.31 & 6.60 \\
+    JPEG & quality=90 & 50.20 & 11.60 $\pm$ 0.20 & 3.80 \\
+    \midrule
+    高斯模糊 & $k=3,\sigma=0.5$ & 47.80 & 0.40 $\pm$ 0.00 & 0.00 \\
+    高斯模糊 & $k=5,\sigma=1.0$ & 56.00 & 46.87 $\pm$ 0.58 & 3.60 \\
+    高斯模糊 & $k=7,\sigma=1.5$ & 60.60 & 60.13 $\pm$ 0.12 & 9.00 \\
+    高斯模糊 & $k=9,\sigma=2.0$ & 57.60 & 58.20 $\pm$ 1.22 & 16.20 \\
+    \midrule
+    位深度 & 2 bit & 57.80 & 55.40 $\pm$ 0.69 & 11.80 \\
+    位深度 & 3 bit & 53.60 & 24.60 $\pm$ 0.20 & 3.80 \\
+    位深度 & 4 bit & 49.20 & 0.60 $\pm$ 0.20 & 1.00 \\
+    位深度 & 5 bit & 48.00 & 0.27 $\pm$ 0.12 & 0.60 \\
+    位深度 & 6 bit & 47.80 & 0.27 $\pm$ 0.12 & -0.60 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{生成器基线修正与目标设定边界}
+
+为加强与同类生成式攻击的比较，本文保留生成器基线实验，但不再使用旧实现的数值作为论文结论。旧版本在每个批次上即时训练一个小型卷积生成器，却直接最小化真实标签交叉熵，损失方向更接近提升正确分类而不是攻击目标；当前实现已将非目标生成器基线修正为最大化真实标签交叉熵，并在配置给出\texttt{target\_class}时切换为目标类别交叉熵最小化。因此，生成器基线需要按表~\ref{tab:generator_target_plan}重新运行后再填入最终数值。该处理既避免把错误代理损失下的低ASR误解释为生成器路线无效，也使表~\ref{tab:direct_method_compare}中的同类算法比较具有一致实验口径。
+
+\begin{table}[htbp]
+  \centering
+  \caption{生成器基线重跑占位与目标扩散攻击补充结果}
+  \label{tab:generator_target_plan}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \resizebox{\textwidth}{!}{%
+  \begin{tabular}{llcccc}
+    \toprule
+    实验 & 参数 & ASR（\%） & ASR（仅正确，\%） & 对抗准确率（\%） & 查询均值 \\
+    \midrule
+    生成器基线 & $\epsilon=0.03$, epochs=25 & 待重跑 & 待重跑 & 待重跑 & 25 \\
+    生成器基线 & $\epsilon=0.03$, epochs=100 & 待重跑 & 待重跑 & 待重跑 & 100 \\
+    生成器基线 & $\epsilon=0.08$, epochs=50 & 待重跑 & 待重跑 & 待重跑 & 50 \\
+    目标扩散 & target\_class=0 & 0.17 $\pm$ 0.29 & 0.20 $\pm$ 0.35 & 81.83 & 7.99 \\
+    \bottomrule
+  \end{tabular}
+  }
+\end{table}
+
+重跑时应优先执行三组生成器参数配置和 \texttt{advgan\_vs\_defenses}，并同步更新表~\ref{tab:direct_method_compare}中的生成器基线行。目标扩散实验则从另一个角度揭示了无限制攻击的难点：在不改变提示词和搜索策略、仅指定 ImageNet 第0类为目标时，表~\ref{tab:generator_target_plan}按攻击结果成功标记统计的 ASR 仅为 0.17\%\,$\pm$\,0.29\%，运行器按最终预测是否等于目标类统计的目标命中率为 0.67\%\,$\pm$\,0.29\%。后者可能包含原始预测已经属于目标类的样本，因此不应与非目标 ASR 直接比较；同一实验中的预测变化率为 0.17\%\,$\pm$\,0.29\%。与非目标扩散攻击的 100\% ASR 相比，目标攻击需要更强的类别条件引导或显式优化，而不是简单复用非目标 img2img 搜索流程。
+
+\section{跨模型分析}
+
+跨模型实验比较 ResNet-50、ViT-B/16 与 DenseNet-121。表~\ref{tab:cross_model_new}显示，扩散攻击在三种模型上均达到 100\% ASR，说明其攻击效果在当前三类模型设置下具有一致性。传统攻击的模型差异更明显：ViT-B/16 上 FGSM ASR 为 61.00\%，DenseNet-121 上 FGSM ASR 达到 94.50\%，而 ResNet-50 在相同高分辨率完整实验中为 50.50\%。扩散净化对 ViT-B/16 干净准确率下降较小（约 28.33\%），但对 DenseNet-121 下降约 45.67\%，体现出净化防御对模型结构和预处理分布的敏感性。
+
+\begin{table}[htbp]
+  \centering
+  \caption{跨模型攻击与扩散净化结果}
+  \label{tab:cross_model_new}
+  \tablefont
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{lcccc}
+    \toprule
+    模型 & 干净准确率（\%） & FGSM ASR（\%） & PGD ASR（\%） & 扩散攻击 ASR（\%） \\
+    \midrule
+    ResNet-50 & 82.00 & 50.50 & 99.50 & 100.00 \\
+    ViT-B/16 & 84.00 & 61.00 & 94.33 & 100.00 \\
+    DenseNet-121 & 72.50 & 94.50 & 98.50 & 100.00 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+图~\ref{fig:cross_model_bubble}从另一个角度展示表~\ref{tab:cross_model_new}的跨模型差异。横轴表示模型在干净样本上的基础准确率，纵轴表示 FGSM 的攻击成功率；气泡半径按扩散净化带来的干净准确率下降（\%）线性映射到最小/最大半径以增强对比，各气泡旁直接标注该百分比。ResNet-50 位于较高干净准确率、较低 FGSM ASR 的区域，说明其在单步梯度扰动下相对更稳定，但气泡最大且旁注约 57.50\%，意味着扩散净化对其干净输入副作用最大。DenseNet-121 则呈现相反形态：干净准确率较低，但 FGSM ASR 接近 95\%，旁注干净下降约 45.67\%，表明其在当前预处理和样本子集下对单步扰动更敏感。ViT-B/16 的气泡最小、旁注约 28.33\%，说明扩散净化对其干净准确率损伤相对较轻，但其 FGSM ASR 仍高于 ResNet-50。
+
+这一图形化结果补充了三线表难以直接呈现的结构关系：模型的干净准确率、传统攻击敏感性和净化副作用并不存在简单线性对应。扩散攻击在三个模型上均达到 100\% ASR，因此它不是区分模型差异的主要维度；真正需要进一步分析的是传统梯度攻击与输入净化在不同模型结构上的交互差异。对评估协议而言，这说明跨模型分析不能只复用同一组攻击成功率表格，还应同步记录防御副作用和资源代价，才能判断某一模型是否真的更适合实际部署。
+
+\begin{figure}[!htbp]
+  \centering
+  \resizebox{0.96\textwidth}{!}{\pgfcrossmodelbubblefigure}
+  \caption{跨模型攻击敏感性气泡散点图（气泡半径按扩散净化后的干净准确率下降映射；旁注为对应百分比）}
+  \label{fig:cross_model_bubble}
+\end{figure}
+
+\section{实验总结}
+
+上述实验支持三点结论。第一，扩散式候选搜索在更大样本量和多随机种子设置下仍保持较高成功率，且其 LPIPS 和对抗准确率特征不同于传统像素扰动。第二，轻量防御能在传统攻击上恢复部分准确率，但对扩散式编辑攻击作用有限；扩散净化虽然更复杂，却同样未能有效抵抗扩散攻击，并带来较高延迟、显存占用和干净准确率损失。第三，参数消融揭示了若干非单调现象：PGD 步数增加到一定程度后边际收益变小，候选数量主要影响感知多样性和查询预算，JPEG、高斯模糊和位深度缩减均存在鲁棒性与干净准确率之间的权衡，目标扩散攻击也明显难于非目标攻击。这些结果共同说明，\methodname 应通过“候选搜索机制+多维证据”理解，而不是只用单次 ASR 或系统功能覆盖来概括。
+
+\chapter{总结与展望}
+\label{chap:conclusion}
+
+\section{工作总结}
+
+本文围绕 AIGC 场景下扩散式无限制对抗样本的生成与评估问题，提出并实现了基于 Stable Diffusion img2img 的候选搜索方法 \methodname。与以往主要关注 $L_p$ 范数扰动的攻击不同，本文方法把生成式编辑算子、候选预算、成功判定、早停回退和 LPIPS 择优组织为一个完整流程，并用 ASR、ASR-C、RA、LPIPS、CLIP Score、FID、延迟和资源占用等指标共同解释攻击结果。实验支撑系统用于保证配置、随机种子、指标和样本产物能够复现，但论文的主线已经从平台工程转向扩散攻击方法与评估协议。
+
+在方法层面，本文形式化给出了扩散候选生成算子、非目标/目标攻击成功判定、成功候选集合、LPIPS 选择准则、失败回退强度和代价向量等定义。相关工作部分补充了 AdvDiff、AdvDiffuser、SCA、AnyAttack 等前沿路线，使本文当前实现与后续可扩展算法之间形成清晰关系：当前实验验证的是 img2img 候选搜索主线，后续可以替换候选生成算子，引入梯度引导、扩散反演、语义一致性约束或视觉语言模型目标攻击。
+
+在实验层面，本文基于重构后的配置体系重新运行并整理了更大规模实验。传统攻击实验扩展到 500 张图像，扩散类实验扩展到 200 张图像，主要实验均使用 42、123、456 三个随机种子报告均值和标准差。实验结果表明，ResNet-50 上 PGD 对干净正确样本的 ASR 达到 99.68\%\,$\pm$\,0.14\%，扩散式生成攻击在 200 张高分辨率图像上达到 100.00\% ASR；轻量防御对扩散攻击的 RA 不超过 1.50\%，扩散净化在该场景下同样效果有限，并带来约 121--138 秒级延迟和较高干净准确率下降。进一步的参数消融表明，传统攻击强度、防御预处理参数、候选数量和目标攻击设定都会影响实验解释，单一默认配置不足以描述完整攻防图景。修订后的实验章还把生成器基线从旧实现结果中剥离出来，作为待重跑的同类算法对照，避免用错误代理损失下的低ASR支撑结论。跨模型实验进一步显示，扩散攻击在 ResNet-50、ViT-B/16 和 DenseNet-121 上均达到 100\% ASR，体现了生成式编辑攻击在当前模型和数据设置下的一致效果。
+
+\section{不足与展望}
+
+本文仍有若干限制。首先，当前生成式攻击主要围绕 Stable Diffusion v1.5 的 img2img 管线展开，尚未实现 AdvDiff 式梯度引导、SCA 式扩散反演或 AnyAttack 式多模态目标攻击。其次，本文采用 ImageNet 子集以控制计算成本，样本量与完整 ImageNet 验证集相比仍属于中等规模评估。第三，当前语义一致性主要依赖通用提示词 CLIP Score 和人工样例观察，尚未引入类别级文本描述、分割一致性或人类评价来严格约束无限制攻击的语义保持。
+
+未来工作可以从三方面推进。其一，扩展候选生成算法，引入 AdvDiff 的对抗采样引导、SCA 的 DDPM 反演和语义一致性控制，以及 AnyAttack 面向视觉语言模型的目标攻击，使本文框架从分类器扩展到多模态模型。其二，增强防御侧研究，探索语义一致性检测、多模型交叉验证、生成轨迹水印和鲁棒特征学习等方法，而不仅依赖输入净化。其三，进一步完善实验支撑能力，包括分布式批量运行、实验数据库、可视化看板、与 RobustBench/ART 等生态的适配层，以及更细粒度的资源剖析。通过这些扩展，本文方法可以从当前的 img2img 候选搜索评估进一步发展为面向 AIGC 安全研究的可持续算法评测框架。\backmatter
+
+\printbibliography
+
+\begin{acknowledgements}
+衷心感谢导师在本文研究过程中的悉心指导和大力支持。从选题到实验设计，从论文写作到反复修改，导师倾注了大量的时间和精力，给予了我宝贵的学术指导和方法论启发。
+
+感谢实验室的各位同学在技术讨论和实验过程中给予的无私帮助。在平台开发和实验调试过程中，同学们提出了许多建设性的意见和建议，使本文的研究工作得以顺利推进。
+
+感谢复旦大学计算机科学技术学院提供的良好学习环境和计算资源支持，为本文的实验工作提供了必要的硬件保障。
+
+感谢开源社区的贡献者们开发和维护了PyTorch、HuggingFace Diffusers、torchattacks等开源工具和框架，为本文的平台开发提供了重要的技术基础。
+
+最后，衷心感谢我的家人一直以来的理解、支持和鼓励。正是家人的无条件支持，让我能够专注于学业和研究，顺利完成本科阶段的学习任务。
+\end{acknowledgements}
+
+\end{document}

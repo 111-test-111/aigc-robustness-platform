@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from src.attack_engine.adv_gan import AdvGANAttack
 
@@ -92,6 +93,26 @@ class TestAdvGANQueries:
         result = attack.generate(batch, labels, model, config={"epochs": 20})
 
         assert result.queries == [20, 20, 20, 20]
+
+
+class TestAdvGANObjective:
+    def test_untargeted_loss_maximizes_true_label_cross_entropy(self) -> None:
+        logits = torch.tensor([[4.0, 1.0], [0.5, 3.0]])
+        labels = torch.tensor([0, 1])
+
+        loss, objective = AdvGANAttack._classification_loss(logits, labels, None)
+
+        assert objective == "untargeted_ce_ascent"
+        assert torch.allclose(loss, -F.cross_entropy(logits, labels))
+
+    def test_targeted_loss_minimizes_target_label_cross_entropy(self) -> None:
+        logits = torch.tensor([[4.0, 1.0], [0.5, 3.0]])
+        labels = torch.tensor([0, 1])
+
+        loss, objective = AdvGANAttack._classification_loss(logits, labels, 0)
+
+        assert objective == "targeted_ce"
+        assert torch.allclose(loss, F.cross_entropy(logits, torch.zeros_like(labels)))
 
 
 class TestAdvGANEpsEffect:
