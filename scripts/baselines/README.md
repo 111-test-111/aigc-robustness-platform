@@ -11,22 +11,27 @@ labels to generate one image per row; it does not edit the row's input image.
 This makes it useful as a strong generative baseline, but its LPIPS-to-original
 semantics differ from img2img attacks.
 
-Server setup:
+Server setup from the repository root:
 
 ```bash
 git submodule update --init --recursive third_party/advdiff
-cd third_party/advdiff
-conda env create -f environment.yaml
-conda activate ldm_adv
-mkdir -p models/ldm/cin256-v2
-wget -O models/ldm/cin256-v2/model.ckpt \
+conda env create -f scripts/baselines/environment_advdiff_a800.yml
+conda activate advdiff-a800
+mkdir -p third_party/advdiff/models/ldm/cin256-v2
+wget -O third_party/advdiff/models/ldm/cin256-v2/model.ckpt \
   https://ommer-lab.com/files/latent-diffusion/nitro/cin/model.ckpt
 ```
+
+The original AdvDiff environment pins `torch=1.7.0`. For A800/Ampere servers,
+prefer `environment_advdiff_a800.yml`, which uses PyTorch 2.1.2 with CUDA 11.8.
+The wrapper installs inference-only compatibility shims for old
+`pytorch_lightning.utilities.distributed` imports, so the vendored AdvDiff
+submodule can stay unchanged.
 
 Run from the main project environment:
 
 ```bash
-export ADVDIFF_PYTHON=/path/to/conda/envs/ldm_adv/bin/python
+export ADVDIFF_PYTHON=/path/to/conda/envs/advdiff-a800/bin/python
 .venv/bin/python -m src.cli run configs/paper/07_advdiff_external.yaml
 ```
 

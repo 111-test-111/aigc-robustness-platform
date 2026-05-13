@@ -1,9 +1,9 @@
 # AdvDiff 外部强基线：class-conditional unrestricted generation
 # 运行前准备：
 #   1. git submodule update --init --recursive third_party/advdiff
-#   2. 在独立环境中安装 third_party/advdiff/environment.yaml
+#   2. A800/Ampere 推荐安装 scripts/baselines/environment_advdiff_a800.yml
 #   3. 下载 checkpoint 到 third_party/advdiff/models/ldm/cin256-v2/model.ckpt
-#   4. 设置 ADVDIFF_PYTHON=/path/to/ldm_adv/bin/python
+#   4. 设置 ADVDIFF_PYTHON=/path/to/advdiff-a800/bin/python
 task:
   name: advdiff_external
   seeds: [42]

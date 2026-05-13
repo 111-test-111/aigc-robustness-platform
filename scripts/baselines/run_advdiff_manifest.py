@@ -196,6 +196,7 @@ def main() -> None:
         "queries_per_sample": int(args.ddim_steps * args.K),
         "queries_are_generation_steps": True,
         "victim_model": "torchvision.resnet50",
+        "runtime": _runtime_versions(),
         "victim_predictions": victim_preds,
         "victim_success": victim_success,
         "victim_success_rate": float(sum(victim_success) / len(victim_success)) if victim_success else 0.0,
@@ -406,9 +407,94 @@ class ManifestDDIMSampler:
 
 
 def _prepare_advdiff_imports(advdiff_root: Path) -> None:
+    _patch_pytorch_lightning_for_inference()
     _patch_torchvision_weight_enums()
     sys.path.insert(0, str(advdiff_root))
     sys.path.insert(0, str(advdiff_root / "taming-transformers"))
+
+
+def _patch_pytorch_lightning_for_inference() -> None:
+    """Keep old LDM inference importable on modern PyTorch environments."""
+    import types
+
+    def rank_zero_only(fn=None, *args, **kwargs):
+        if fn is None:
+            return lambda inner: inner
+        return fn
+
+    def rank_zero_info(message="", *args, **kwargs):
+        if message:
+            print(message % args if args else message)
+
+    try:
+        import pytorch_lightning as pl  # type: ignore
+    except Exception as exc:
+        import torch
+
+        print(f"pytorch_lightning import failed; using inference-only stub ({exc!r}).")
+
+        class LightningModule(torch.nn.Module):
+            @property
+            def device(self):
+                try:
+                    return next(self.parameters()).device
+                except StopIteration:
+                    try:
+                        return next(self.buffers()).device
+                    except StopIteration:
+                        return torch.device("cpu")
+
+            def log(self, *args, **kwargs):
+                return None
+
+            def log_dict(self, *args, **kwargs):
+                return None
+
+        pl = types.ModuleType("pytorch_lightning")
+        pl.LightningModule = LightningModule
+        pl.seed_everything = lambda seed, *args, **kwargs: _seed_everything(int(seed))
+        sys.modules["pytorch_lightning"] = pl
+    else:
+        try:
+            from pytorch_lightning.utilities.rank_zero import rank_zero_info as real_info
+            from pytorch_lightning.utilities.rank_zero import rank_zero_only as real_only
+
+            rank_zero_info = real_info
+            rank_zero_only = real_only
+        except Exception:
+            try:
+                from pytorch_lightning.utilities.distributed import rank_zero_only as real_only
+
+                rank_zero_only = real_only
+            except Exception:
+                pass
+            rank_zero_info = getattr(getattr(pl, "utilities", None), "rank_zero_info", rank_zero_info)
+
+    utilities = sys.modules.get("pytorch_lightning.utilities") or types.ModuleType("pytorch_lightning.utilities")
+    utilities.rank_zero_only = rank_zero_only
+    utilities.rank_zero_info = rank_zero_info
+    sys.modules["pytorch_lightning.utilities"] = utilities
+    parent = sys.modules.get("pytorch_lightning")
+    if parent is not None:
+        if not hasattr(parent, "__path__"):
+            parent.__path__ = []
+        parent.utilities = utilities
+
+    rank_zero = sys.modules.get("pytorch_lightning.utilities.rank_zero") or types.ModuleType(
+        "pytorch_lightning.utilities.rank_zero"
+    )
+    rank_zero.rank_zero_only = rank_zero_only
+    rank_zero.rank_zero_info = rank_zero_info
+    sys.modules["pytorch_lightning.utilities.rank_zero"] = rank_zero
+    utilities.rank_zero = rank_zero
+
+    distributed = sys.modules.get("pytorch_lightning.utilities.distributed") or types.ModuleType(
+        "pytorch_lightning.utilities.distributed"
+    )
+    distributed.rank_zero_only = rank_zero_only
+    distributed.rank_zero_info = rank_zero_info
+    sys.modules["pytorch_lightning.utilities.distributed"] = distributed
+    utilities.distributed = distributed
 
 
 def _patch_torchvision_weight_enums() -> None:
@@ -427,10 +513,8 @@ def _patch_torchvision_weight_enums() -> None:
 
 
 def _load_ldm_model(instantiate_from_config, config, checkpoint_path: Path, device: str):
-    import torch
-
     print(f"Loading AdvDiff LDM checkpoint from {checkpoint_path}")
-    checkpoint = torch.load(str(checkpoint_path), map_location="cpu")
+    checkpoint = _torch_load_checkpoint(checkpoint_path, map_location="cpu")
     state_dict = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
     model = instantiate_from_config(config.model)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
@@ -441,6 +525,15 @@ def _load_ldm_model(instantiate_from_config, config, checkpoint_path: Path, devi
     model.to(device)
     model.eval()
     return model
+
+
+def _torch_load_checkpoint(path: Path, map_location: str):
+    import torch
+
+    try:
+        return torch.load(str(path), map_location=map_location, weights_only=False)
+    except TypeError:
+        return torch.load(str(path), map_location=map_location)
 
 
 def _load_resnet50_victim(device: str):
@@ -520,6 +613,31 @@ def _resolve_path(value: str, base: Path) -> Path:
     if not path.is_absolute():
         path = base / path
     return path.resolve()
+
+
+def _runtime_versions() -> dict[str, Any]:
+    versions: dict[str, Any] = {}
+    try:
+        import torch
+
+        versions["torch"] = torch.__version__
+        versions["cuda"] = getattr(torch.version, "cuda", None)
+        versions["cudnn"] = torch.backends.cudnn.version()
+    except Exception as exc:
+        versions["torch_error"] = repr(exc)
+    try:
+        import torchvision
+
+        versions["torchvision"] = torchvision.__version__
+    except Exception as exc:
+        versions["torchvision_error"] = repr(exc)
+    try:
+        import pytorch_lightning as pl
+
+        versions["pytorch_lightning"] = getattr(pl, "__version__", "inference_stub")
+    except Exception as exc:
+        versions["pytorch_lightning_error"] = repr(exc)
+    return versions
 
 
 def _seed_everything(seed: int) -> None:
