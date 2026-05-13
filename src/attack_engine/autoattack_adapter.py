@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import inspect
 import time
 from typing import Any
 
@@ -37,6 +38,7 @@ class AutoAttackAdapter(Attack):
 
         autoattack_mod = self._load_autoattack()
         autoattack_cls = autoattack_mod.AutoAttack
+        backend_name = getattr(autoattack_mod, "__name__", "autoattack")
 
         norm: str = str(config.get("norm", "Linf"))
         eps: float = float(config.get("eps", 0.03))
@@ -56,7 +58,7 @@ class AutoAttackAdapter(Attack):
 
         start = time.monotonic()
         try:
-            adversary_kwargs: dict[str, Any] = {
+            requested_kwargs: dict[str, Any] = {
                 "norm": norm,
                 "eps": eps,
                 "seed": seed,
@@ -65,15 +67,16 @@ class AutoAttackAdapter(Attack):
                 "device": str(batch.device),
             }
             if log_path:
-                adversary_kwargs["log_path"] = str(log_path)
+                requested_kwargs["log_path"] = str(log_path)
 
+            adversary_kwargs = self._filter_supported_kwargs(autoattack_cls, requested_kwargs)
             adversary = autoattack_cls(target_model, **adversary_kwargs)
             if seed is not None:
                 adversary.seed = int(seed)
             if attacks_to_run:
                 adversary.attacks_to_run = list(attacks_to_run)
 
-            adv = adversary.run_standard_evaluation(batch, labels, bs=batch_size)
+            adv = self._run_standard_evaluation(adversary, batch, labels, batch_size)
         finally:
             for param, requires_grad in zip(target_params, target_requires_grad):
                 param.requires_grad_(requires_grad)
@@ -100,7 +103,7 @@ class AutoAttackAdapter(Attack):
             success=success,
             queries=[estimated_queries] * batch.shape[0],
             metadata={
-                "backend": "pyautoattack",
+                "backend": backend_name,
                 "norm": norm,
                 "eps": eps,
                 "version": version,
@@ -115,14 +118,53 @@ class AutoAttackAdapter(Attack):
 
     @staticmethod
     def _load_autoattack():
+        errors: list[ImportError] = []
+        for module_name in ("autoattack", "pyautoattack"):
+            try:
+                return importlib.import_module(module_name)
+            except ImportError as exc:
+                errors.append(exc)
+        raise ImportError(
+            "AutoAttack is not installed. Install the optional baseline "
+            "dependencies with `pip install -e '.[baselines]'` or "
+            "`pip install pyautoattack>=0.2.0`."
+        ) from errors[-1]
+
+    @staticmethod
+    def _filter_supported_kwargs(autoattack_cls: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
         try:
-            return importlib.import_module("autoattack")
-        except ImportError as exc:
-            raise ImportError(
-                "AutoAttack is not installed. Install the optional baseline "
-                "dependencies with `pip install -e '.[baselines]'` or "
-                "`pip install pyautoattack>=0.2.0`."
-            ) from exc
+            signature = inspect.signature(autoattack_cls)
+        except (TypeError, ValueError):
+            return kwargs
+        if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in signature.parameters.values()):
+            return kwargs
+        return {key: value for key, value in kwargs.items() if key in signature.parameters}
+
+    @staticmethod
+    def _run_standard_evaluation(adversary: Any, batch: torch.Tensor, labels: torch.Tensor, batch_size: int):
+        method = adversary.run_standard_evaluation
+        try:
+            signature = inspect.signature(method)
+        except (TypeError, ValueError):
+            signature = None
+
+        if signature is not None and "batch_size" in signature.parameters:
+            return method(batch, labels, batch_size=batch_size)
+        if signature is not None and "bs" in signature.parameters:
+            return method(batch, labels, bs=batch_size)
+
+        try:
+            return method(batch, labels, bs=batch_size)
+        except TypeError as exc:
+            if "bs" not in str(exc):
+                raise
+            try:
+                return method(batch, labels, batch_size=batch_size)
+            except TypeError as batch_size_exc:
+                raise ImportError(
+                    "Installed AutoAttack package exposes an unsupported "
+                    "`run_standard_evaluation` signature."
+                ) from batch_size_exc
 
     @staticmethod
     def _estimate_queries(version: str, attacks_to_run: Any) -> int:

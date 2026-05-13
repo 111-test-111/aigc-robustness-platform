@@ -55,8 +55,47 @@ def test_autoattack_adapter_uses_external_package(monkeypatch) -> None:
     assert result.adversarial.shape == batch.shape
     assert result.success.dtype == torch.bool
     assert result.queries == [5300, 5300]
-    assert result.metadata["backend"] == "pyautoattack"
+    assert result.metadata["backend"] == "autoattack"
     assert result.metadata["queries_are_estimated"] is True
+
+
+def test_autoattack_adapter_falls_back_to_pyautoattack(monkeypatch) -> None:
+    class FakePyAutoAttack:
+        def __init__(self, model, *, norm, eps, seed, version, device):
+            self.model = model
+            self.kwargs = {
+                "norm": norm,
+                "eps": eps,
+                "seed": seed,
+                "version": version,
+                "device": device,
+            }
+            self.attacks_to_run = []
+
+        def run_standard_evaluation(self, images, labels, *, batch_size):
+            assert batch_size == 2
+            assert self.kwargs["norm"] == "Linf"
+            assert self.kwargs["eps"] == 0.1
+            return torch.clamp(images + 0.5, 0, 1)
+
+    fake_module = types.ModuleType("pyautoattack")
+    fake_module.AutoAttack = FakePyAutoAttack
+    monkeypatch.setitem(sys.modules, "pyautoattack", fake_module)
+    monkeypatch.delitem(sys.modules, "autoattack", raising=False)
+
+    attack = AutoAttackAdapter()
+    batch = torch.zeros(2, 3, 8, 8)
+    labels = torch.zeros(2, dtype=torch.long)
+
+    result = attack.generate(
+        batch,
+        labels,
+        MeanClassifier(),
+        {"eps": 0.1, "batch_size": 2, "seed": 123, "verbose": True, "log_path": "ignored.log"},
+    )
+
+    assert result.adversarial.shape == batch.shape
+    assert result.metadata["backend"] == "pyautoattack"
 
 
 def test_autoattack_rejects_targeted_config(monkeypatch) -> None:
