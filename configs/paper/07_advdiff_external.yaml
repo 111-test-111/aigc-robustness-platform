@@ -1,0 +1,87 @@
+# AdvDiff 外部强基线：class-conditional unrestricted generation
+# 运行前准备：
+#   1. git submodule update --init --recursive third_party/advdiff
+#   2. 在独立环境中安装 third_party/advdiff/environment.yaml
+#   3. 下载 checkpoint 到 third_party/advdiff/models/ldm/cin256-v2/model.ckpt
+#   4. 设置 ADVDIFF_PYTHON=/path/to/ldm_adv/bin/python
+task:
+  name: advdiff_external
+  seeds: [42]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 224
+  batch_size: 16
+  eval_batch_size: 200
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: advdiff
+    backend: external
+    method: AdvDiff
+    command:
+      - "${oc.env:ADVDIFF_PYTHON,python3}"
+      - scripts/baselines/run_advdiff_manifest.py
+      - --manifest
+      - "{manifest}"
+      - --output-dir
+      - "{output_dir}"
+      - --metadata
+      - "{metadata_json}"
+      - --device
+      - "{device}"
+      - --advdiff-root
+      - third_party/advdiff
+      - --checkpoint
+      - "${oc.env:ADVDIFF_CKPT,models/ldm/cin256-v2/model.ckpt}"
+      - --batch-size
+      - "${oc.env:ADVDIFF_BATCH_SIZE,4}"
+      - --ddim-steps
+      - "${oc.env:ADVDIFF_DDIM_STEPS,50}"
+      - --K
+      - "${oc.env:ADVDIFF_K,2}"
+      - --s
+      - "${oc.env:ADVDIFF_S,1.0}"
+      - --a
+      - "${oc.env:ADVDIFF_A,0.5}"
+      - --scale
+      - "${oc.env:ADVDIFF_SCALE,3.0}"
+      - --early-stop
+      - all
+    timeout_sec: 86400
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - fid
+    - clip_score
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/advdiff_external
+  formats:
+    - markdown

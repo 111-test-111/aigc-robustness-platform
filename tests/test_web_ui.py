@@ -153,6 +153,8 @@ class TestProcessLogic:
 class TestHelperFunctions:
     """Tests for the web_ui helper functions."""
 
+    completed_exp = "traditional_attack_baseline"
+
     def test_metrics_to_table(self) -> None:
         from src.web_ui import _metrics_to_table
 
@@ -213,8 +215,8 @@ class TestHelperFunctions:
         assert "paper/03_full_resnet50_suite" in names
         # Should include ablations with descriptive paths
         assert "ablations/defense/defense_00_no_defense" in names
-        assert "ablations/diffusion_strength/diffusion_strength_03" in names
-        assert "ablations/purification_steps/purification_steps_10" in names
+        assert "ablations/attack/diffusion/strength_03" in names
+        assert "ablations/defense/diffusion_purification/steps_10" in names
         # Should NOT include smoke configs
         assert "smoke/cpu" not in names
         assert "smoke/synthetic" not in names
@@ -224,13 +226,12 @@ class TestHelperFunctions:
         from src.web_ui import _list_completed_experiments
 
         names = _list_completed_experiments()
-        # baseline_resnet50 was just run, should exist
-        assert "baseline_resnet50" in names
+        assert self.completed_exp in names
 
     def test_load_experiment_metrics(self) -> None:
         from src.web_ui import _load_experiment_metrics
 
-        metrics = _load_experiment_metrics("baseline_resnet50")
+        metrics = _load_experiment_metrics(self.completed_exp)
         assert "attacks" in metrics
         assert "defenses" in metrics
         assert "fgsm" in metrics["attacks"]
@@ -238,16 +239,16 @@ class TestHelperFunctions:
     def test_load_flat_metrics(self) -> None:
         from src.web_ui import _load_flat_metrics
 
-        metrics = _load_flat_metrics("baseline_resnet50")
-        assert "fgsm_asr" in metrics
-        assert isinstance(metrics["fgsm_asr"], (int, float))
+        metrics = _load_flat_metrics(self.completed_exp)
+        assert "fgsm_asr_mean" in metrics
+        assert isinstance(metrics["fgsm_asr_mean"], (int, float))
 
     def test_load_report_markdown(self) -> None:
         from src.web_ui import _load_report_markdown
 
-        report = _load_report_markdown("baseline_resnet50")
+        report = _load_report_markdown(self.completed_exp)
         assert "# 实验报告" in report
-        assert "baseline_resnet50" in report
+        assert self.completed_exp in report
 
     def test_load_report_markdown_missing(self) -> None:
         from src.web_ui import _load_report_markdown
@@ -258,14 +259,14 @@ class TestHelperFunctions:
     def test_list_figures(self) -> None:
         from src.web_ui import _list_figures
 
-        figures = _list_figures("baseline_resnet50")
+        figures = _list_figures(self.completed_exp)
         assert len(figures) > 0
         assert any("radar" in f.name for f in figures)
 
     def test_list_sample_dirs(self) -> None:
         from src.web_ui import _list_sample_dirs
 
-        dirs = _list_sample_dirs("baseline_resnet50")
+        dirs = _list_sample_dirs(self.completed_exp)
         assert any("clean" in d for d in dirs)
         assert any("adversarial" in d for d in dirs)
 
@@ -273,12 +274,12 @@ class TestHelperFunctions:
         from src.web_ui import _load_sample_images
 
         # Test with "samples/" prefix (as returned by _list_sample_dirs)
-        images = _load_sample_images("baseline_resnet50", "samples/clean")
+        images = _load_sample_images(self.completed_exp, "samples/clean")
         assert len(images) > 0
         assert all(p.suffix == ".png" for p in images)
 
     def test_load_sample_images_empty(self) -> None:
         from src.web_ui import _load_sample_images
 
-        images = _load_sample_images("baseline_resnet50", "nonexistent_subdir")
+        images = _load_sample_images(self.completed_exp, "nonexistent_subdir")
         assert images == []

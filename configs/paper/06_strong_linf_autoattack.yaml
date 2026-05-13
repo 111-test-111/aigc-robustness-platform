@@ -1,0 +1,57 @@
+# 强 Lp 约束攻击基线：AutoAttack on ResNet-50
+# 说明：该配置不下载新数据集，复用现有 ImageNet 子集。
+# 运行前需要安装可选依赖：pip install -e '.[baselines]'
+task:
+  name: strong_linf_autoattack
+  seeds: [42, 123, 456]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 224
+  batch_size: 16
+  eval_batch_size: 16
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: autoattack
+    norm: Linf
+    eps: 0.03
+    version: standard
+    batch_size: 16
+    estimated_queries_per_sample: 5300
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/strong_linf_autoattack
+  formats:
+    - markdown

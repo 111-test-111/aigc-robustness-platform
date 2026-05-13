@@ -12,8 +12,12 @@ Canonical experiments for the thesis.
 | `01_traditional_attack_baseline.yaml` | FGSM/PGD on ResNet-50 with JPEG, blur, and bit-depth defenses | Traditional baseline table |
 | `02_generative_attack_mainline.yaml` | Stable Diffusion img2img attack with JPEG and diffusion purification | Main AIGC/unrestricted attack result |
 | `03_full_resnet50_suite.yaml` | FGSM, PGD, and diffusion attack with all implemented defenses | Final comprehensive table when compute budget allows |
-| `04_cross_model_robustness.yaml` | FGSM, PGD, AdvGAN, and diffusion attack across ResNet50, ViT-B/16, DenseNet121 | Cross-architecture robustness comparison (run per model) |
+| `04_cross_model_A_traditional.yaml` | FGSM, PGD, and generator baseline on ResNet-50 with lightweight defenses | Cross-model traditional phase template |
+| `04_cross_model_B_purification.yaml` | FGSM, PGD, and generator baseline with diffusion purification | Cross-model purification phase template |
+| `04_cross_model_C_diffusion.yaml` | Diffusion attack with all defenses | Cross-model diffusion phase template |
 | `05_targeted_attack.yaml` | Untargeted vs targeted diffusion attack comparison | Targeted attack analysis |
+| `06_strong_linf_autoattack.yaml` | AutoAttack on ResNet-50 with lightweight defenses | Strong Lp-bounded baseline comparison |
+| `07_advdiff_external.yaml` | External AdvDiff class-conditional generation baseline | Strong unrestricted generative baseline comparison |
 
 Run the canonical paper suite:
 
@@ -61,8 +65,12 @@ which defense works best for each attack type.
 
 | File | Model | Purpose |
 |------|-------|---------|
-| `vit_b_16_baseline.yaml` | ViT-B/16 | Transformer vs CNN robustness comparison |
-| `densenet121_baseline.yaml` | DenseNet121 | Dense connectivity vs residual robustness comparison |
+| `vit_b_16_A_traditional.yaml` | ViT-B/16 | Transformer vs CNN robustness under traditional/generator attacks |
+| `vit_b_16_B_purification.yaml` | ViT-B/16 | Transformer response to diffusion purification |
+| `vit_b_16_C_diffusion.yaml` | ViT-B/16 | Transformer response to diffusion attack |
+| `densenet121_A_traditional.yaml` | DenseNet121 | Dense connectivity robustness under traditional/generator attacks |
+| `densenet121_B_purification.yaml` | DenseNet121 | Dense connectivity response to diffusion purification |
+| `densenet121_C_diffusion.yaml` | DenseNet121 | Dense connectivity response to diffusion attack |
 
 ## `smoke/`
 
@@ -74,13 +82,23 @@ python -m src.cli run configs/smoke/cpu.yaml
 python -m src.cli run configs/smoke/sd_tiny_e2e.yaml
 ```
 
+## `templates/`
+
+Templates for external strong baselines that are not vendored into this repo.
+Copy one into `configs/paper/` after filling in the external command path.
+
+| File | Purpose |
+|------|---------|
+| `advdiffuser_external.yaml` | Runs an external AdvDiffuser-compatible implementation through the manifest protocol |
+| `advdiff_external.yaml` | Runs an external AdvDiff or AdvDiff-style guided diffusion implementation |
+
 ## Experiment Dimensions Summary
 
 The config matrix covers these dimensions for comprehensive robustness evaluation:
 
 | Dimension | Values in configs |
 |-----------|-------------------|
-| **Attack methods** | FGSM, PGD, AdvGAN, DiffusionAttack |
+| **Attack methods** | FGSM, PGD, AutoAttack, generator baseline, DiffusionAttack, external AdvDiffuser/AdvDiff adapters |
 | **Defense methods** | JPEG, Gaussian Blur, Bit Depth, Diffusion Purification |
 | **Model architectures** | ResNet50, ViT-B/16, DenseNet121 |
 | **Attack strength (eps)** | 0.01, 0.03, 0.08, 0.15 |

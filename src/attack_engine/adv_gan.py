@@ -140,3 +140,14 @@ class AdvGANAttack(Attack):
                 "elapsed_sec": round(elapsed, 4),
             },
         )
+
+
+class BatchGeneratorBaselineAttack(AdvGANAttack):
+    """Explicit name for the batch-trained small-generator baseline.
+
+    ``AdvGANAttack`` is kept for backward-compatible configs, but new paper
+    configs should prefer this name to avoid implying a full offline AdvGAN
+    reproduction.
+    """
+
+    name: str = "generator_baseline"

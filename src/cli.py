@@ -229,7 +229,7 @@ def _is_sd_config(config_path: Path) -> bool:
     """
     cfg = _load_plain_config(config_path)
     return any(
-        _uses_sd_backend(item, "diffusion")
+        _uses_sd_attack(item)
         for item in _list_config_section(cfg.get("attacks", []))
     ) or any(
         _uses_sd_backend(item, "diffusion_purification")
@@ -275,6 +275,15 @@ def _uses_sd_backend(item: dict[str, Any], default_sd_name: str) -> bool:
     name = str(item.get("name", ""))
     backend = str(item.get("backend", ""))
     return backend == "sd" or (name == default_sd_name and backend != "mock")
+
+
+def _uses_sd_attack(item: dict[str, Any]) -> bool:
+    """Return True when an attack is expected to consume SD-scale VRAM."""
+    name = str(item.get("name", ""))
+    backend = str(item.get("backend", ""))
+    if name in {"advdiffuser", "advdiff"}:
+        return backend != "mock"
+    return _uses_sd_backend(item, "diffusion")
 
 
 def _collect_prewarm_requirements(

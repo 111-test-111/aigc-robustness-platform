@@ -19,9 +19,11 @@ from PIL import Image
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
-from src.attack_engine.adv_gan import AdvGANAttack
+from src.attack_engine.adv_gan import AdvGANAttack, BatchGeneratorBaselineAttack
+from src.attack_engine.autoattack_adapter import AutoAttackAdapter
 from src.attack_engine.base import Attack, AttackResult
 from src.attack_engine.diffusion_attack import DiffusionAttack
+from src.attack_engine.external_command import AdvDiffExternalAttack, AdvDiffuserExternalAttack
 from src.attack_engine.fgsm import FGSMAttack
 from src.attack_engine.pgd import PGDAttack
 from src.attack_engine.text_jailbreak import JailbreakAttack, TextAttack
@@ -46,8 +48,12 @@ logger = logging.getLogger(__name__)
 ATTACK_REGISTRY: dict[str, type[Attack]] = {
     "fgsm": FGSMAttack,
     "pgd": PGDAttack,
+    "autoattack": AutoAttackAdapter,
     "advgan": AdvGANAttack,
+    "generator_baseline": BatchGeneratorBaselineAttack,
     "diffusion": DiffusionAttack,
+    "advdiffuser": AdvDiffuserExternalAttack,
+    "advdiff": AdvDiffExternalAttack,
     "jailbreak": JailbreakAttack,  # type: ignore[dict-item]
 }
 

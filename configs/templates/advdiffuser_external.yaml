@@ -1,0 +1,77 @@
+# 外部 AdvDiffuser 强基线模板
+# 该模板不会下载新数据集。请先准备可运行的 AdvDiffuser 实现，然后把
+# `command` 改成你的脚本入口。平台会导出 inputs/manifest/config，再读回 outputs。
+task:
+  name: advdiffuser_external
+  seeds: [42, 123, 456]
+  device: auto
+
+dataset:
+  name: imagenet_subset
+  root: data/raw/imagenet_subset/images
+  manifest: data/raw/imagenet_subset/manifest.csv
+  num_samples: 200
+  image_size: 512
+  batch_size: 4
+  eval_batch_size: 4
+  download: false
+  strict_labels: true
+
+target_model:
+  type: classifier
+  name: resnet50
+  weights: imagenet
+
+attacks:
+  - name: advdiffuser
+    backend: external
+    method: AdvDiffuser
+    # Placeholders available:
+    # {manifest}, {input_dir}, {output_dir}, {config_json}, {labels_json},
+    # {metadata_json}, {work_dir}, {device}
+    command:
+      - python3
+      - /path/to/advdiffuser_eval.py
+      - --manifest
+      - "{manifest}"
+      - --output-dir
+      - "{output_dir}"
+      - --metadata
+      - "{metadata_json}"
+      - --device
+      - "{device}"
+    timeout_sec: 7200
+    queries_per_sample: 0
+
+defenses:
+  - name: jpeg
+    quality: 75
+  - name: gaussian_blur
+    kernel_size: 5
+    sigma: 1.0
+  - name: bit_depth
+    bits: 4
+  - name: diffusion_purification
+    backend: sd
+    model_id: stable-diffusion-v1-5/stable-diffusion-v1-5
+    noise_level: 0.1
+    steps: 50
+    sd_batch_size: 8
+
+metrics:
+  attack:
+    - asr
+    - queries
+  quality:
+    - lpips
+    - clip_score
+    - fid
+  defense:
+    - robust_accuracy
+    - clean_accuracy_drop
+    - latency
+
+report:
+  output_dir: reports/advdiffuser_external
+  formats:
+    - markdown

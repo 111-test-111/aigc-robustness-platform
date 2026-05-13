@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 def test_baseline_config_loads():
     cfg = OmegaConf.load("configs/paper/01_traditional_attack_baseline.yaml")
     assert cfg.task.name == "traditional_attack_baseline"
-    assert cfg.task.seeds == [42, 123, 456, 789, 1024]
+    assert cfg.task.seeds == [42, 123, 456]
     assert len(cfg.attacks) == 2
     assert len(cfg.defenses) == 3
 
@@ -87,13 +87,21 @@ def test_cross_interaction_configs_load():
 
 
 def test_model_ablation_configs_load():
-    cfg_vit = OmegaConf.load("configs/ablations/model/vit_b_16_baseline.yaml")
-    assert cfg_vit.target_model.name == "vit_b_16"
-    assert len(cfg_vit.attacks) == 4
+    cfg_vit_trad = OmegaConf.load("configs/ablations/model/vit_b_16_A_traditional.yaml")
+    assert cfg_vit_trad.target_model.name == "vit_b_16"
+    assert len(cfg_vit_trad.attacks) == 3
 
-    cfg_dn = OmegaConf.load("configs/ablations/model/densenet121_baseline.yaml")
-    assert cfg_dn.target_model.name == "densenet121"
-    assert len(cfg_dn.attacks) == 4
+    cfg_vit_diff = OmegaConf.load("configs/ablations/model/vit_b_16_C_diffusion.yaml")
+    assert cfg_vit_diff.target_model.name == "vit_b_16"
+    assert len(cfg_vit_diff.attacks) == 1
+
+    cfg_dn_trad = OmegaConf.load("configs/ablations/model/densenet121_A_traditional.yaml")
+    assert cfg_dn_trad.target_model.name == "densenet121"
+    assert len(cfg_dn_trad.attacks) == 3
+
+    cfg_dn_diff = OmegaConf.load("configs/ablations/model/densenet121_C_diffusion.yaml")
+    assert cfg_dn_diff.target_model.name == "densenet121"
+    assert len(cfg_dn_diff.attacks) == 1
 
 
 def test_is_sd_config_classification():
@@ -212,7 +220,7 @@ def test_per_gpu_pool_distribution():
 
     # With 57 configs / 4 GPUs, each GPU gets 14-15 configs
     assert dist[0] == 15  # 0,4,8,...,56 = 15
-    assert dist[1] == 15  # 1,5,9,...,53 = 14? Let me count...
+    assert dist[1] == 14  # 1,5,9,...,53 = 14
     # Actually: 0..56 step 4 = 0,4,8,12,16,20,24,28,32,36,40,44,48,52,56 = 15
     # 1..53 step 4 = 1,5,9,13,17,21,25,29,33,37,41,45,49,53 = 14
     # 2..54 step 4 = 14
@@ -223,10 +231,15 @@ def test_per_gpu_pool_distribution():
 
 
 def test_paper_new_configs_load():
-    cfg_cross = OmegaConf.load("configs/paper/04_cross_model_robustness.yaml")
-    assert cfg_cross.task.name == "cross_model_robustness"
-    assert len(cfg_cross.attacks) == 4
-    assert "advgan" in [a.name for a in cfg_cross.attacks]
+    cfg_cross_a = OmegaConf.load("configs/paper/04_cross_model_A_traditional.yaml")
+    assert cfg_cross_a.task.name == "cross_model_traditional"
+    assert len(cfg_cross_a.attacks) == 3
+    assert "advgan" in [a.name for a in cfg_cross_a.attacks]
+
+    cfg_cross_c = OmegaConf.load("configs/paper/04_cross_model_C_diffusion.yaml")
+    assert cfg_cross_c.task.name == "cross_model_diffusion"
+    assert len(cfg_cross_c.attacks) == 1
+    assert cfg_cross_c.attacks[0].name == "diffusion"
 
     cfg_targeted = OmegaConf.load("configs/paper/05_targeted_attack.yaml")
     assert cfg_targeted.task.name == "targeted_attack"
