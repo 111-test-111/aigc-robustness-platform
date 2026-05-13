@@ -6,7 +6,7 @@
 #   4. 设置 ADVDIFF_PYTHON=/path/to/advdiff-a800/bin/python
 task:
   name: advdiff_external
-  seeds: [42]
+  seeds: [42, 123, 456]
   device: auto
 
 dataset:
