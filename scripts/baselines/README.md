@@ -3,7 +3,7 @@
 ## AdvDiff
 
 `run_advdiff_manifest.py` bridges the platform's external attack protocol to
-the third-party `EricDai0/advdiff` implementation vendored as a git submodule
+the third-party `EricDai0/advdiff` implementation vendored as source files
 under `third_party/advdiff`.
 
 AdvDiff is class-conditional unrestricted generation. It uses the manifest
@@ -14,7 +14,6 @@ semantics differ from img2img attacks.
 Server setup from the repository root:
 
 ```bash
-git submodule update --init --recursive third_party/advdiff
 conda env create -f scripts/baselines/environment_advdiff_a800.yml
 conda activate advdiff-a800
 mkdir -p third_party/advdiff/models/ldm/cin256-v2
@@ -26,7 +25,7 @@ The original AdvDiff environment pins `torch=1.7.0`. For A800/Ampere servers,
 prefer `environment_advdiff_a800.yml`, which uses PyTorch 2.1.2 with CUDA 11.8.
 The wrapper installs inference-only compatibility shims for old
 `pytorch_lightning.utilities.distributed` imports, so the vendored AdvDiff
-submodule can stay unchanged.
+source can stay unchanged.
 
 Run from the main project environment:
 

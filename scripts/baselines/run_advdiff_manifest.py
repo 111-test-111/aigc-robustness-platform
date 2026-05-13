@@ -177,7 +177,7 @@ def main() -> None:
     metadata = {
         "method": "AdvDiff",
         "source_repo": "https://github.com/EricDai0/advdiff",
-        "source_commit": _git_commit(advdiff_root),
+        "source_commit": _advdiff_source_commit(advdiff_root),
         "advdiff_root": str(advdiff_root),
         "config": str(config_path),
         "checkpoint": str(checkpoint_path),
@@ -665,6 +665,18 @@ def _git_commit(path: Path) -> Optional[str]:
         ).strip()
     except Exception:
         return None
+
+
+def _advdiff_source_commit(path: Path) -> Optional[str]:
+    return _read_optional_text(path / "SOURCE_COMMIT") or _git_commit(path)
+
+
+def _read_optional_text(path: Path) -> Optional[str]:
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return text or None
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
