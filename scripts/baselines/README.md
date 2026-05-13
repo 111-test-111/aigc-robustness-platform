@@ -26,6 +26,9 @@ prefer `environment_advdiff_a800.yml`, which uses PyTorch 2.1.2 with CUDA 11.8.
 The wrapper installs inference-only compatibility shims for old
 `pytorch_lightning.utilities.distributed` imports, so the vendored AdvDiff
 source can stay unchanged.
+The environment file avoids GitHub-only pip dependencies; the vendored
+AdvDiff tree includes the minimal `taming` and `clip` import shims needed for
+the ImageNet class-conditional inference path.
 
 Run from the main project environment:
 
