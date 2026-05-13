@@ -76,7 +76,8 @@ def test_autoattack_adapter_falls_back_to_pyautoattack(monkeypatch) -> None:
             assert batch_size == 2
             assert self.kwargs["norm"] == "Linf"
             assert self.kwargs["eps"] == 0.1
-            return torch.clamp(images + 0.5, 0, 1)
+            adv = torch.clamp(images + 0.5, 0, 1)
+            return adv, torch.ones_like(labels)
 
     fake_module = types.ModuleType("pyautoattack")
     fake_module.AutoAttack = FakePyAutoAttack

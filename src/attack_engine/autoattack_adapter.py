@@ -76,7 +76,9 @@ class AutoAttackAdapter(Attack):
             if attacks_to_run:
                 adversary.attacks_to_run = list(attacks_to_run)
 
-            adv = self._run_standard_evaluation(adversary, batch, labels, batch_size)
+            adv = self._extract_adversarial_tensor(
+                self._run_standard_evaluation(adversary, batch, labels, batch_size)
+            )
         finally:
             for param, requires_grad in zip(target_params, target_requires_grad):
                 param.requires_grad_(requires_grad)
@@ -165,6 +167,17 @@ class AutoAttackAdapter(Attack):
                     "Installed AutoAttack package exposes an unsupported "
                     "`run_standard_evaluation` signature."
                 ) from batch_size_exc
+
+    @staticmethod
+    def _extract_adversarial_tensor(output: Any) -> torch.Tensor:
+        if isinstance(output, torch.Tensor):
+            return output
+        if isinstance(output, tuple) and output and isinstance(output[0], torch.Tensor):
+            return output[0]
+        raise TypeError(
+            "AutoAttack run_standard_evaluation returned an unsupported "
+            f"type: {type(output)!r}."
+        )
 
     @staticmethod
     def _estimate_queries(version: str, attacks_to_run: Any) -> int:
